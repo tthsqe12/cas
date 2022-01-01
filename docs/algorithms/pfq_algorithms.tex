@@ -1,0 +1,949 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath, amssymb, amsthm, tikz}
+\usetikzlibrary{decorations.pathmorphing}
+\usepackage{color}
+\addtolength{\textwidth}{2.2in}
+\addtolength{\hoffset}{-1.2in}
+\addtolength{\textheight}{2.0in}
+\addtolength{\voffset}{-1.0in}
+
+\usepackage{bbm}
+\newcommand{\ee}[0] {\mathrm{e}}
+\newcommand{\ii}[0] {\mathrm{i}}
+
+%\newcommand{\ee}[0] {e}
+%\newcommand{\ii}[0] {i}
+
+
+\numberwithin{equation}{section}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{entry}[theorem]{Entry}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{example}[theorem]{Example}
+%\mathtoolsset{showonlyrefs=true}
+
+\newcommand{\FF}[6] {{}_{#1}{#2}_{#3} \left( \begin{array}{c} #4 \\ #5 \end{array} \Big| #6  \right)}
+\newcommand{\FFe}[7] {{}_{#1}^{\,}{#2}_{#3}^{#4} \left( \begin{array}{c} #5 \\ #6 \end{array} \Big| #7 \right)}
+\newcommand{\FFf}[5] {{}_{#1}{#2}_{#3} \left(#4 | {#5} \right)}
+\newcommand{\FFef}[6] {{}_{#1}^{\,}{#2}_{#3}^{#4} \left(#5 | {#6} \right)}
+
+\newcommand{\ARG}[2] {\left( \begin{array}{c} #1 \\ #2 \end{array} \right)}
+
+\newcommand{\bfa}[0] {\mathbf{a}}
+\newcommand{\bfb}[0] {\mathbf{b}}
+\newcommand{\bfm}[0] {\mathbf{m}}
+\newcommand{\bfn}[0] {\mathbf{n}}
+\newcommand{\bfx}[0] {\mathbf{x}}
+\newcommand{\bfy}[0] {\mathbf{y}}
+
+\author{}
+\title{Calculating $\, _{p}F_{q}$}
+\date{}
+
+\begin{document}
+\maketitle
+
+\abstract{The generalized hypergeometric function $\FFf{p}{F}{q}{\bfa; \bfb}{z}$ is susceptible to various numerical evaluation techniques. Here we attempt to give effective strategies for unrestricted $z$ while restricting the parameters so that $||\bfa||+||\bfb||$ does not exceed the roughly the working bit precision. The problem of large parameters is \emph{not} considered, and the techiniques considered are rigorous, that is, they produce a proven enclosure of the value of the function.}
+
+\section{Definitions}
+For $\mathbf{a}=a_1,\dots,a_p$ and  $\mathbf{b}=b_1,\dots,b_q$, set $(a)_n := \Gamma(a+n)/\Gamma(a)$ and $(\mathbf{a})_n := \prod_i (a_i)_n$ and define
+\begin{equation}
+\label{Fdef}
+\FF{p}{F}{q}{\mathbf{a}}{\mathbf{b}}{z} := \sum_{n=0}^{\infty} \frac{(\mathbf{a})_n}{(\mathbf{b})_n} \frac{z^n}{n!}
+\end{equation}
+The function is undefined when any $b_i$ is $0,-1,-2,\dots$, i.e. $\Gamma(\mathbf{b}) := \prod_i \Gamma(b_i)$ is infinite. When either $z$ or $1/\Gamma(\bfa)$ is zero, the series terminates and \eqref{Fdef} provides a perfectly reasonable definition in this case.
+
+Since the difference in parameter counts $q+1-p$ controls the most important properties of these functions, set $d=q+1-p$ for any $p$ and $q$. The series \eqref{Fdef} defines an entire function of $z$ for $d > 0$ and diverges for $d<0$. For $d<2$, the hypergeometric function can be defined in the non-terminating case on a section of the Riemann surface of $\log(-z)$ by
+\begin{equation}
+\label{mbint}
+\FF{p}{F}{q}{\mathbf{a}}{\mathbf{b}}{z} = \frac{\Gamma(\mathbf{b})}{\Gamma(\mathbf{a})} \int_{-\ii \infty}^{+\ii \infty} \frac{\Gamma(\mathbf{a}+s) \Gamma(-s)}{\Gamma(\mathbf{b}+s)} (-z)^s \frac{ds}{2\pi \ii}\text{,} \quad |\arg(-z)| < (2-d) \tfrac{\pi}{2}\text{.}
+\end{equation}
+When $d=0$ the branch structure is even richer due to a singularity at $z=1$ and the Riemann surface of $\log$ is no longer sufficient to describe a branch. The integer $d$ can also be viewed as a measure of the difficulty in evaluating the function: $d=0$ can be handled by various connection formulas with convergent series, and the function poses more difficulties as $d$ moves away from $0$ due to increasingly more difficult essential singularities. The standard quantity
+$\sigma = \Sigma(\mathbf{b}) - \Sigma(\mathbf{a})$ is also relevent when $d \ge 0$.
+
+Since functions accept numbers and not points on Riemann surfaces, we will use ${}_p F_{q} = {}_p F_{q}^{+}$ to denote the usual branch with continuity from below $\mathbb{R}_{+}$ and ${}_p^{\,} F_{q}^{-}$ for the non-standard continuity from above $\mathbb{R}_{+}$. Whenever a possibly infinite quantity $\Gamma(a_i-a_j)$ appears in a formula \footnote{that is, when the list $\bfa$ has duplicates modulo $\mathbb{Z}$} that formula should be interpreted via a limiting case of the general formula. Also, $\hat{\mathbf{a}}_i$ denotes the length $p-1$ vector with the $i^{\text{th}}$ entry omitted.
+
+The imaginary unit is denoted by $\ii = \sqrt{-1}$, and $\ee = 2.718\dots$ is Euler's number.
+
+\section{The case $d=0$}
+Here we have several usual transcendental functions, rational possibilities, and algebraic possibilities.
+\begin{align*}
+\FF{3}{F}{2}{1,2,3}{4,5}{z} &= \frac{36}{z^3}+\frac{90}{z^2}-\frac{6}{z}+\left
+   (\frac{36}{z^4}-\frac{36}{z^2}\right) \log
+   (1-z)-\frac{72}{z^3}
+   \text{Li}_2(z)\text{,}\\
+\FF{3}{F}{2}{5,4,3}{2,1}{z} &= \frac{140}{(1-z)^9}-\frac{315}{(1-z)^8}+\frac{240}{(1-z)^7}-\frac{70}{(1-z)^6}+\frac{6}{(1-z)^5}\text{,}\\
+\FFf{2}{F}{1}{-\tfrac{1}{6}, \tfrac{1}{6};\tfrac{1}{2}}{z} &= \tfrac{1}{2} \left(\sqrt{1-z}+\sqrt{-z}\right)^{1/3}+\tfrac{1}{2} \left(\sqrt{1-z}-\sqrt{-z}\right)^{1/3}\text{.}
+\end{align*}
+In general ${}_{p}F_{p-1}(z)$ has singularities at $z=1$ and $z=\infty$ with a standard branch cut along the real axis $[1,\infty]$. For agreement with the usual transcendental functions, the standard value on the branch cut is determined by continuity from below.
+
+\subsection{inside unit circle}
+For arguments sufficiently inside the unit circle, we can just sum the series. Besides the implementation details of how to actually sum the series, there is not much else to say here.
+
+\subsection{outside unit circle}
+The residues on the left of \eqref{mbint} give
+\begin{equation}
+\label{balanced_outside}
+\FF{p}{F}{p-1}{\mathbf{a}}{\mathbf{b}}{z} = \sum_{i=1}^{p} \frac{\Gamma(\mathbf{b}) \Gamma(\hat{\mathbf{a}}_i-a_i)}{\Gamma(\mathbf{b}-a_i) \Gamma(\hat{\mathbf{a}}_i)} (-z)^{-a_i} \FFe{p}{F}{p-1}{-}{a_i,1+a_i-\mathbf{b}}{1+a_i-\hat{\mathbf{a}}_i}{\frac{1}{z}}
+\end{equation}
+and for arguments sufficiently outside the unit circle we can just sum the series on the right.
+
+\subsection{near unit circle, away from one}
+The hypergeometric function can be evaluated non-rigorously near the the unit circle using various sequence transformations or Pad\'e approximations. The series may be evaluated rigorously via a convergent series for any $z \not \in [1,\infty]$ by the right hand side of
+\begin{equation}
+\label{balanced_anywhere}
+\FF{p}{F}{p-1}{\mathbf{a}}{\mathbf{b}}{z} = (\tfrac12+ \tfrac12 \sqrt{1-z})^{-2 a_p} \sum_{n=0}^{\infty}u_n \left(\frac{1-\sqrt{1-z}}{1+\sqrt{1-z}}\right)^n
+\end{equation}
+However, since computation of the $u_n$'s is a bit expensive, it should only be used when absolutely neccessary. Furthermore, the convergence rate is only acceptable sufficiently far away from the branch cut $[1,\infty]$. The algebraic prefactor is not strictly necessary but there is good reason for it. It is present in many quadratic transformation formulas in special cases and has the effect of lowering the order of the recurrence relation for $u_n$ by one.
+
+\subsection{near one}
+
+This is the most interesting case as the function can fail to be defined at one. The existence of $F(1)$ is determinded by $\Re(\sigma)> 0$. If $\sigma$ is not an integer we have
+\begin{equation}
+\label{nearone}
+\FF{p}{F}{p-1}{\mathbf{a}}{\mathbf{b}}{1-z} = \sum_{n=0}^{\infty} u_n \left(\begin{array}{c} \mathbf{a}\\\mathbf{b}\end{array} \right) z^{\sigma+n} + \sum_{n=0}^{\infty} v_n \left(\begin{array}{c} \mathbf{a}\\\mathbf{b}\end{array} \right) z^n
+\end{equation}
+with the $u_1,u_2,\dots$ determined from recurrences by $u_0 = \Gamma(-\sigma)\Gamma(\mathbf{b})/\Gamma(\mathbf{a})$ and the $v_{p-1}, v_p, \dots$ are determined from recurrences of order $p-1$ by $v_0, \dots, v_{p-2}$. Thus the difficulty is computing these $v_0, \dots, v_{p-2}$. Gauss derived a formula for $v_0$ when $p=2$.
+
+If $\sigma$ is an integer, then at most one $\log(z)$ enters into the series.
+
+\subsubsection{generic approach}
+We simply evaluate Equation \eqref{nearone} and its derivatives up to and including order $p-1$ at $z=1/4$ to solve for the $u_0,v_0,\dots,v_{p-2}$. The explicit formula for $u_0$ is surprisingly useless in this approach.
+
+\subsubsection{Buehring}
+Here we sum the first $m$ terms of Equation \eqref{Fdef} and use a formula derived by Buehring to sum the remaining terms. Since we will be dealing with logarithmically convergent series (when $z=1$) in both sums, it is important to balance the choice of $m$ between the two to ensure a sub-exponential algorithm. The basic idea is that although the convergence of the series $\Sigma_n n^{-m}$ is ultimately slow (logarithmic), if $m$ is large enough relative to the target precision, the ``slow'' part of the sum is never reached.
+
+We have (Equations (2.7) and (2.9) in ``analytic continuation of the generalized hypergeoemtric series near unit argument with emphasis on the zero-balanced series'' by Buehring and Srivastava)
+\begin{align}
+\nonumber
+\sum_{n=m}^{\infty}{\frac{(\mathbf{a})_n}{(\mathbf{b})_n} \frac{z^n}{n!}}&=\frac{\Gamma(\mathbf{b})}{\Gamma(\mathbf{a})} z^m \sum_{k=0}^{\infty} {\frac{\Gamma(\mathbf{a}+m+k)}{\Gamma(\mathbf{b}+m+k)} \frac{z^k}{\Gamma(1+m+k)}}\\
+\label{buehring}
+&=\frac{\Gamma(\mathbf{b})(a_p)_m}{\Gamma(\hat{\mathbf{a}}_p)} z^m \sum_{k=0}^{\infty} {A_k\left(\begin{array}{c} \hat{\mathbf{a}}_p \\ \mathbf{b} \end{array}\right)} \,{} _2\tilde{F}_1\left( \begin{array}{c} 1,a_p+m \\ 1+\sigma+a_p+m+k \end{array} \Big| z\right)
+\end{align}
+where the $A_k(\hat{\mathbf{a}}_p; \mathbf{b})$ are independent of $m$ and are polynomials in $a_1,\dots,a_{p-1},b_1,\dots,b_{p-1}$. They can be defined in the base case $p=2$ as
+\begin{equation*}
+A_k\left(\begin{array}{c} a_1 \\ b_1 \end{array}\right) = \frac{(1-a_1)_k(b_1-a_1)_k}{k!}
+\end{equation*}
+and inductively for larger $p$ by Hadamard and Cauchy products. After all is said and done, the $A_k$ satisfy an order $p-1$ recurrence and are bounded as
+\begin{equation}
+\frac{A_k}{k!} \ll \sum_{i<p}k^{\sigma+a_p-1-a_i}
+\end{equation}
+Convergence of the tail series is ensured by
+$|1-1/z|<1$ and $m+\Re(a_i)>0$ for all $i<p$ since
+\begin{equation*}
+k! \, _2\tilde{F}_1\left( \begin{array}{c} 1,a_p+m \\ 1+\sigma+a_p+m+k \end{array} \Big| z\right) \ll k^{-\sigma} \left|1-1/z\right|^k + k^{-m-\sigma-a_p}\text{.}
+\end{equation*}
+
+In reality the majorant method will probably produce a much worse explicit bound $|A_k/k!| \le c k^{\mu}$ so we are balancing the sum of the first $m$ terms of a sum whose terms are like $n^{-1-\sigma}$ with another series that we can only prove has terms like $k^{\mu-m-\sigma-a_p}$. Any reasonable overestimation of $\mu$ can be compensated by a larger $m$. Finally, in order to sum in total no more than $O(d)$ terms for $d$ digit accuracy, it probably suffices to take $m \approx d$ for reasonable parameter ranges.
+
+\subsubsection{hybrid approach for $\sigma \not \in \mathbb{Z}$}
+The necessary coefficients $u_0$ (respectively $v_0,\dots,v_{p-2}$) in \eqref{nearone} may be evaluated by combining \eqref{buehring} (with $z$ replaced by $1-z$) for $m=0$ (respectively large $m$) with the expansion
+\begin{equation}
+\label{2f1nearone}
+\begin{aligned}
+{}_2\tilde{F}_1\left(\begin{array}{c} 1,a_p+m \\ 1+\sigma+a_p+m+k \end{array} \Big| 1-z\right) &= \frac{\Gamma (-\sigma-k)}{\Gamma (a_p+m)} \sum_{j=0}^{\infty} \frac{(\sigma+a_p+m+k)_j}{j!}z^{\sigma+k+j}\\
+&+\frac{-1}{\Gamma
+   \left(\sigma+a_p+m+k\right)} \sum_{j=0}^{\infty} \frac{(a_p+m)_j}{(-\sigma-k)_{j+1}} z^j\text{.}
+\end{aligned}
+\end{equation}
+The basic idea is that
+\begin{equation}
+\label{viapprox}
+\sum_{n=0}^{m-1} \frac{(\mathbf a)_n}{(\mathbf b)_n}\frac{(1-z)^n}{n!} \approx v_0 + v_1 z + v_2 z^2 + \cdots\text{.}
+\end{equation}
+This is no help in evaluating the $u_n$, but those can be found easily. We have
+
+\begin{align*}
+F(1-z)=\sum_{n=0}^{m-1} \frac{(\mathbf a)_n}{(\mathbf b)_n}\frac{(1-z)^n}{n!}&+\frac{\Gamma(\mathbf{b})(a_p)_m}{\Gamma(\hat{\mathbf{a}}_p)} (1-z)^m \sum_{k=0}^{\infty} {A_k\left(\begin{array}{c} \hat{\mathbf{a}}_p \\ \mathbf{b} \end{array}\right)}\,{} _2\tilde{F}_1\left( \begin{array}{c} 1,a_p+m \\ 1+\sigma+a_p+m+k \end{array} \Big| 1-z\right)\\
+=\sum_{n=0}^{m-1} \frac{(\mathbf a)_n}{(\mathbf b)_n}\frac{(1-z)^n}{n!}&+\frac{\Gamma(\mathbf{b})(a_p)_m}{\Gamma(\hat{\mathbf{a}}_p)} (1-z)^m \sum_{k=0}^{\infty} {A_k\left(\begin{array}{c} \hat{\mathbf{a}}_p \\ \mathbf{b} \end{array}\right)}\frac{\Gamma (-\sigma-k)}{\Gamma (a_p+m)} \sum_{j=0}^{\infty} \frac{(\sigma+a_p+m+k)_j}{j!}z^{\sigma+k+j}\\
+&+\frac{\Gamma(\mathbf{b})(a_p)_m}{\Gamma(\hat{\mathbf{a}}_p)} (1-z)^m \sum_{k=0}^{\infty} {A_k\left(\begin{array}{c} \hat{\mathbf{a}}_p \\ \mathbf{b} \end{array}\right)} \frac{-1}{\Gamma
+	\left(\sigma+a_p+m+k\right)} \sum_{j=0}^{\infty} \frac{(a_p+m)_j}{(-\sigma-k)_{j+1}} z^j.
+\end{align*}
+Taking $m=0$ and equating non-integral powers of $z$ gives
+\begin{align*}
+\sum_{n=0}^\infty u_n z^{\sigma + n} &= \frac{\Gamma(\mathbf{b})}{\Gamma(\hat{\mathbf{a}}_p)} \sum_{k=0}^{\infty} {A_k\left(\begin{array}{c} \hat{\mathbf{a}}_p \\ \mathbf{b} \end{array}\right)}\frac{\Gamma (-\sigma-k)}{\Gamma (a_p)} \sum_{j=0}^\infty \frac{(\sigma+a_p+k)_j}{j!} z^{\sigma+k+j}\text{,}
+\end{align*}
+so that in particular $u_0=\Gamma(-\sigma)\Gamma(\mathbf b) / \Gamma (\mathbf a)$ and in general
+\begin{align*}
+u_n=\frac{\Gamma(\mathbf{b})}{\Gamma(\hat{\mathbf{a}}_p)} \sum_{k+j=n}{A_k\left(\begin{array}{c} \hat{\mathbf{a}}_p \\ \mathbf{b} \end{array}\right)}\frac{\Gamma (-\sigma-k)}{\Gamma (a_p)} \frac{(\sigma+a_p+k)_j}{j!}\text{.}
+\end{align*}
+Equating integral powers of $z$ gives 
+\begin{align*}
+\sum_{n=0}^\infty v_nz^n=\sum_{n=0}^{m-1}{\frac{(\mathbf{a})_n}{(\mathbf{b})_n} \frac{(1-z)^n}{n!}}+\frac{\Gamma(\mathbf{b})(a_p)_m}{\Gamma(\hat{\mathbf{a}}_p)} \sum_{\ell=0}^\infty\frac{(-m)_\ell}{\ell!}z^\ell \sum_{k=0}^{\infty} {A_k\left(\begin{array}{c} \hat{\mathbf{a}}_p \\ \mathbf{b} \end{array}\right)} \frac{-1}{\Gamma
+	\left(\sigma+a_p+m+k\right)} \sum_{j=0}^{\infty} \frac{(a_p+m)_j}{(-\sigma-k)_{j+1}} z^j\text{,}
+\end{align*}
+or, for arbitrary $m$,
+\begin{align*}
+v_i - [z^i] \sum_{n=0}^{m-1}&{\frac{(\mathbf{a})_n}{(\mathbf{b})_n} \frac{(1-z)^n}{n!}} = \sum_{\ell +j=i}\frac{\Gamma(\mathbf{b})(a_p)_m}{\Gamma(\hat{\mathbf{a}}_p)}\frac{(-m)_\ell}{\ell!}\sum_{k=0}^{\infty} {A_k\left(\begin{array}{c} \hat{\mathbf{a}}_p \\ \mathbf{b} \end{array}\right)} \frac{-1}{\Gamma
+	\left(\sigma+a_p+m+k\right)}\frac{(a_p+m)_j}{(-\sigma-k)_{j+1}}\\
+&= \frac{\Gamma(\mathbf{b}) (a_p)_m}{\Gamma(\hat{\mathbf{a}}_p) \Gamma\left(\sigma+a_p+m\right)} \sum_{j=0}^{i}\frac{(a_p+m)_j (-m)_{i-j}}{(i-j)!}\sum_{k=0}^{\infty} {A_k\left(\begin{array}{c} \hat{\mathbf{a}}_p \\ \mathbf{b} \end{array}\right)} \frac{-1}{\left(\sigma+a_p+m\right)_k (-\sigma-k)_{j+1}}
+\end{align*}
+This formula for the $v_i$ is as effective as the series in the previous section. Another formula for the $v_i$ follows by noting that both sides of \eqref{nearone} can be differentiated, which yields
+\begin{equation*}
+i! (-1)^i v_i \ARG{\mathbf{a}}{\mathbf{b}} = \frac{(\mathbf{a})_i}{(\mathbf{b})_i} v_0 \ARG{\mathbf{a}+i}{\mathbf{b}+i}\text{.}
+\end{equation*}
+Combining this with the above formula for $v_0$ gives
+\begin{align*}
+i! (-1)^i v_i \ARG{\mathbf{a}}{\mathbf{b}} &= \frac{(\mathbf{a})_i}{(\mathbf{b})_i} \left(  \sum_{n=0}^{m-1}{\frac{(\mathbf{a}+i)_n}{(\mathbf{b}+i)_n} \frac{1}{n!}} +\frac{\Gamma(\mathbf{b}+i) \Gamma(a_p+i+m)}{\Gamma(\mathbf{a}+i) \Gamma(\sigma+a_p+m)} \sum_{k=0}^{\infty} A_k \ARG{\hat{\mathbf{a}}_p+i}{\mathbf{b}+i} \frac{1}{(\sigma-i+k) (\sigma+a_p+m)_k} \right)\\
+&=\sum_{n=0}^{m-1}{\frac{(\mathbf{a})_{n+i}}{(\mathbf{b})_{n+i}} \frac{1}{n!}} + \frac{\Gamma(\mathbf{b}) \Gamma(a_p+i+m)}{\Gamma(\mathbf{a}) \Gamma(\sigma+a_p+m)} \sum_{k=0}^{\infty} A_k \ARG{\hat{\mathbf{a}}_p+i}{\mathbf{b}+i} \frac{1}{(\sigma-i+k) (\sigma+a_p+m)_k}\text{.}
+\end{align*}
+Finally, replacing $m$ by $m-i$ gives the succinct formula
+\begin{equation}
+\label{visuc}
+\begin{aligned}
+i! (-1)^i v_i \ARG{\mathbf{a}}{\mathbf{b}} &= \quad\frac{\Gamma(\mathbf{b}) \Gamma(a_p+m)}{\Gamma(\mathbf{a}) \Gamma(\sigma-i+a_p+m)} \sum_{k=0}^{\infty} A_k \ARG{\hat{\mathbf{a}}_p+i}{\mathbf{b}+i} \frac{1}{(\sigma-i+k) (\sigma-i+a_p+m)_k}\\
+&\quad +\frac{\partial^i}{\partial z^i} \Big|_{z=1} \sum_{n=0}^{m-1}{\frac{(\mathbf{a})_{n}}{(\mathbf{b})_{n}} \frac{z^n}{n!}}\text{.}
+\end{aligned}
+\end{equation}
+When $\Re(\sigma) \le i$ so that the coefficient of $z^i$ on the left hand side of \eqref{viapprox} diverges as $m$ tends to $\infty$, there is cancelation between the two sums on the right hand side of \eqref{visuc}. Thus, it should not be used in this case.
+
+\section{The case $d<0$}
+\label{section_negd}
+We shall abuse the notation and \underline{redefine $d=|d|$ in this section}. This strange case includes
+\begin{align*}
+\sum_{k=0}^{\infty} k! x^k &= \int_{0}^{\infty} \frac{\ee^{-t}}{1-x t} dt\text{,} \quad x \not \in (0,\infty)\\
+\sum_{k=0}^{\infty} k!^2 x^{2k+2} &= \int_{0}^{\infty} \left(2 \ee^{-t} \sin ^{-1}tx\right)^2 dt\text{,} \quad x \in \ ?\\
+\sum_{k=0}^{\infty}\frac{(-1)^k 2^{-2 k} (2 k)!}{k!} x^{2 k+1} &=\sqrt{\pi } \ee^{1/x^2}
+   \text{erfc}\left(1/x\right)\text{,} \quad \Re x > 0
+\end{align*}
+
+The usual non-rigorous method of approximately summing these series is the ``summation with optimal truncation", that is, the sum is truncated immediately after the terms start to increase in absolute value. Whether we have a method of bounding the error or not, this method suffers from an obvious drawback: it can only deliver a limited amount of precision as the optimal truncation point is independent of the target precision. As for rigorous evaluation, the formal series is divergent except for zero argument or terminating parameters and is $1/d$--Borel summable in a range of directions. As in ``The Borel Sum of Divergent Barnes Hypergeometric Series and its Application to a Partial Differential Equation'' by Kunio Ichinobe, this leads to the equality \eqref{mbint}, or by the residues on the left of the integration path,
+\begin{equation}
+\label{divrecp}
+\FF{p}{F}{q}{\mathbf{a}}{\mathbf{b}}{z} = \sum_{i=1}^{p} \frac{\Gamma(\mathbf{b}) \Gamma(\hat{\mathbf{a}}_i-a_i)}{\Gamma(\mathbf{b}-a_i) \Gamma(\hat{\mathbf{a}}_i)} (-z)^{-a_i} \FF{q+1}{F}{p-1}{a_i,1+a_i-\mathbf{b}}{1+a_i-\hat{\mathbf{a}}_i}{\frac{(-1)^d}{z}}\text{.}
+\end{equation}
+The series on the right are convergent. For ${}_p^{\,} F_{q}^{-}$, we should take $(-1/z)^{a_i}$ in place of $(-z)^{-a_i}$.
+
+The difficulty here is when $|z|$ is so small that the convergent series on the right hand side cannot be summed. There is also great cancelation among the terms of the right hand side for small $|z|$. In this case, a direct evaluation of the Laplace integral defining the Borel sum should be preferred. This proceeds
+as follows. For any ``direction'' $\omega$ with $\Re \omega > 0$, we have
+\begin{equation*}
+k! = \int_0^{\infty} \ee^{-\omega t} (\omega t)^k \omega dt
+\end{equation*}
+Divide each term of \eqref{Fdef} by $(dn)!$ to obtain the convergent series
+\begin{equation*}
+\hat{F}(x) := \sum_{n=0}^{\infty} \frac{d^{d n}(\mathbf{a})_n}{(dn)!(\mathbf{b})_n} \frac{x^n}{n!}\text{.}
+\end{equation*}
+Then, at least formally, with $k = dn$, we have
+\begin{equation*}
+\FF{p}{F}{q}{\mathbf{a}}{\mathbf{b}}{z} = \int_{0}^{\infty} \ee^{-\omega t} \hat{F}(z(\omega/d)^d t^d) \omega dt \text{.}
+\end{equation*}
+The integrand has singularities at $t = d/\omega \cdot z^{-1/d} \cdot (\ee^{2\pi i 1/ d}, \dots, \ee^{2\pi i  d / d})$
+and $\omega$ must be chosen so that none of these singularites lie on the path of integration, that is $z \omega^d \not \in \mathbb{R}_{+}$.
+
+In order to compute the usual branch of \eqref{divrecp}, that is, with continuity from below along the positive real axis, it suffices to take
+\begin{equation*}
+\begin{alignedat}{3}
+\frac{\arg 1/z - 2\pi}{d} &< \arg \omega < \frac{\arg 1/z}{d} \text{,} \quad & \arg 1/z \ge 0\\
+\frac{\arg 1/z}{d} &< \arg \omega < \frac{\arg 1/z + 2\pi}{d} \text{,} \quad & \arg 1/z < 0
+\end{alignedat}
+\end{equation*}
+Note also that these formulas are not sensitive to the choice of argument for negative real $z$, that is, $\arg -1 = -\pi$ works equally as well as the usual choice $\arg -1 = \pi$.
+
+Finally, when $z$ ranges over a ball containing zero, a fixed direction $\omega$ cannot be determined, and we should evaluation the function by using the obvious expansion (integration by parts in the Laplace integral or a contour shift in the Melin-Barnes integral) to the optimal truncation point $m$
+\begin{equation*}
+\FF{p}{F}{q}{\mathbf{a}}{\mathbf{b}}{z} = \sum_{n=0}^{m} \frac{(\mathbf{a})_n}{(\mathbf{b})_n} \frac{z^n}{n!} + \frac{(\mathbf{a})_m}{(\mathbf{b})_m} \frac{z^m}{m!} \FF{p+1}{F}{q+1}{\mathbf{a}+m,1}{\mathbf{b}+m,1+m}{z}\text{.}
+\end{equation*}
+The Laplace integral for the second term on the right hand side needs to be bounded for some valid direction $\omega$. For a given arbitrary $z$ we can always choose an $\omega$ with $|\omega|=1$, and, for example,
+\begin{align*}
+|\arg \omega| &\le \frac{\pi}{3+\sqrt{d-1}}\text{,} \quad \text{and}\\
+|\arg -z \omega^d| &\le \max(0, 19 - 2d)\frac{\pi}{24}\text{.}
+\end{align*}
+These conditions reduce the problem to bounding $\hat{F}(x)$ on a sector disjoint from its branch cut $[1, \infty)$. The quantity $\hat{F}(z (\omega/d)^d t^d)$ can be bounded in absolute value by the form $? t^?$ by combining \eqref{balanced_anywhere} for small $t$ and \eqref{balanced_outside} for large $t$, and $\ee^{-\omega t}$ is bounded by $\ee^{- \Re \omega t}$.
+
+\subsection{limiting cases}
+In formula \eqref{entirerecp2} below we need to deal with limiting cases of ${}_p F_q$ for $p > q+1$, and the resummation of series containing logs introduces some minor technicalities. In this case, the formal $1/d$--Borel transform $\mathcal{B}_{1/d}: f(z) \mapsto \hat{f}(\xi)$ is defined on monomials as
+\begin{equation*}
+\mathcal{B}_{1/d} \left(z^\lambda \frac{\log(z)^j}{j!} \right) = \sum_{i=0}^{j} d^{i}\frac{{\operatorname{r\Gamma}}^{(i)}(d\lambda+1)}{i!} {\xi}^{\lambda}\frac{\log(\xi)^{j-i}}{(j-i)!}\text{,} \quad \operatorname{r\Gamma}^{(i)}(s):=\frac{d^i}{ds^i}\frac{1}{\Gamma(s)}
+\end{equation*}
+and extended to formal sums via linearity. The Laplace transform formally inverts the Borel transform: for any direction $\omega$ with $\Re \omega > 0$, we have the formal identity
+\begin{equation*}
+f(z) = \int_{0}^{\infty} \ee^{-\omega t} \hat{f}(z (\omega t)^d) \omega dt\text{.}
+\end{equation*}
+
+
+\section{The case $d>0$}
+This case has the prototypical $\FFf{0}{F}{2}{\tfrac13, \tfrac23}{z}$ example
+\begin{equation}
+\label{ex0F2}
+\sum_{n=0}^{\infty}\frac{3^{3n+1}z^n}{(3n)!} = \sum_{\zeta^3=1} \ee^{3\zeta z^{1/3}}\text{.}
+\end{equation}
+The series may be summed for any argument, but the problem for large $|z|$ is that many terms may be required before the partial sums start to approach the true value. The right hand side of \eqref{ex0F2} may be more effective due to the fact that $\ee^{z}$, while still being defined by ${}_0 F_0(z)$, has easy argument reduction to a small box around the origin. The ratio of successive terms is
+\begin{equation*}
+\frac{z}{(n+1) (n+\frac{1}{3}) (n+\frac{2}{3})} \sim \frac{z}{n^3}
+\end{equation*}
+and approximately $|z|^{1/3}$ terms have to be summed before the terms start to decrease. In this case, the formal expansion
+\begin{equation}
+\label{entirerecp}
+\begin{alignedat}{1}
+\FF{p}{F}{q}{\mathbf{a}}{\mathbf{b}}{z}&\overset{?}{=}\sum_{i=1}^{p} \frac{\Gamma(\mathbf{b}) \Gamma(\hat{\mathbf{a}}_i-a_i)}{\Gamma(\hat{\mathbf{a}}_i)\Gamma(\mathbf{b}-a_i)} (-z)^{-a_i} \FF{q+1}{F}{p-1}{a_i,1+a_i-\mathbf{b}}{1+a_i-\hat{\mathbf{a}}_i}{\frac{(-1)^d}{z}}\\
+&+\sum_{\zeta^d=1} c_{\zeta} \frac{\Gamma(\mathbf{b})}{d^{\frac{1}{2}} (2 \pi )^{\frac{d-1}{2}} \Gamma(\mathbf{a})} \ee^{d \zeta z^{1/d}}(\zeta z^{1/d})^{\frac{d-1}{2}-\sigma} \left(1+\frac{u_1}{\zeta z^{1/d}}+\frac{u_2}{\zeta^2 z^{2/d}}+\cdots\right)\text{,}
+\end{alignedat}
+\end{equation}
+which consists of $q+1$ divergent series, might useful (recall that $p+d=q+1$). The first $p$ series are hypergeometric and $1/d$--Borel summable. The last $d$ series in $z^{-1/d}$ are $1$--Borel summable, and the coefficients $u_i$, which are polynomials in $\mathbf{a}$ and $\mathbf{b}$, satisfy recurrences of order $q$ with $u_0=1$ sufficient to define the whole sequence. According to E. M. Wright in ``The Asymptotic Expansion of the Generalized Hypergeometric Function'', $c_{1}=1$ and the $u_i$ may also be defined by
+\begin{equation*}
+\frac{(2 \pi )^{\frac{d-1}{2}} d^{\frac{d-1}{2}-\sigma
+   }}{d^{\frac12} d^{dn}n!}\frac{(\bfa)_n}{(\bfb)_n} \sim \sum_{i=0}^{\infty}\frac{d^i u_i}{\Gamma \left(1+d
+   n-\frac{d-1}{2}+\sigma+i\right)}\text{,} \quad n \to \infty\text{.}
+\end{equation*}
+
+Since just one term ($\zeta=1$) on the right hand side of \eqref{entirerecp} is the overwhelmingly dominant term of the sum in most cases, miscalculations in the summation of the divergent series can easily go unnoticed. Thus it is judicious for testing purposes to express each of the divergent series in terms of convergent series. In doing so we will give a precise definition of $1 + u_1 z + \cdots$ and a correct form of \eqref{entirerecp}. Unfortunately, Wright's results are only useful here when $d$ is $1$ or $2$: the two asymptotically greatest terms have $c_{\zeta}=1$, while the remaining $d-2$ terms of smaller order have larger $c_{\zeta}$. Thus, the non-trivial $c_{\zeta}$ are hidden behind \emph{two} levels of overdominant expansions, and miscalculations of the $c_{\zeta}$ are even more likely to go unnoticed \footnote{The Ma\dots computer algebra systems assume that $c_\zeta = 0$ for $\zeta \neq 1$ and $d>2$.}.
+
+\subsection{the function ${}_p U_q$}
+The resummation of the divergent series $\Sigma_n u_n z^n$ starts with the function $\hat{U}(\xi) = \sum_{n=0}^{\infty} u_n \xi^n/n!$ with non-zero radius of convergence. Any singularity of $\hat{U}(\xi)$ stands in the way of resumming $\Sigma_n u_n z^n$. With $\xi \partial_{\xi}$ on the left, the differential equation for $\hat{U}(\xi)$ has the form
+\begin{equation*}
+\sum_{i=0}^{q+1} (\xi \partial_\xi)^i \Phi_{i}(\xi)\hat{U}(\xi) = 0\text{,} \quad \text{ where } \quad \xi \Phi_{q+1}(\xi) = (\xi-d)^p ((\xi-d)^d-(-d)^d)\text{.}
+\end{equation*}
+Thus there are $p+d-1$ singularities at the center or on the perimeter of the circle centered at $\xi=d$ with a radius of $d$, and we have the following lemma with $\theta$ defined as
+\begin{equation*}
+\theta := \begin{cases}
+\frac{\pi}{2} + \frac{\pi}{d}\text{,} & d > 1\\
+\pi\text{,} & d = 1
+\end{cases}\text{.}
+\end{equation*}
+\begin{lemma}
+The function $\hat{U}(\xi)$ satisfies a monic linear homonogenous differential equation of order $q+1$ with rational coefficients that are regular and bounded on the sector $|\arg(-\xi)| < \theta$. The denominator of these rational functions may be taken to be $\Phi_{q+1}(\xi)$.
+\end{lemma}
+
+We are lucky that singularities are only present in the differential equation in $\Re \xi > 0$, so we can define a continuous sum away from $\mathbb{R}_{+}$. On the Riemann surface of $\log$, this means that we can sum past $|\arg(-z)|\le \pi$, but not by much, and by a lesser amount with larger $d$.
+
+\begin{lemma}
+\label{pUq_def}
+For a direction $\omega$ chosen so that $\Re \omega > 0$ and $|\arg(-z \omega)| < \theta$,
+\begin{equation*}
+\FF{p}{U}{q}{\bfa}{\bfb}{z} := \int_{0}^{\infty} \ee^{-\omega t} \hat{U}(z \omega t) \omega dt
+\end{equation*}
+defines an analytic function on $\mathbb{C} \setminus \mathbb{R}_{+}$ such that for any $\zeta$ with $\zeta^d=1$ a solution of the hypergeometric differential equation is given by
+\begin{equation*}
+f_{\zeta}(z) := \ee^{d \zeta z^{1/d}} (\zeta z^{1/d})^{\frac{d-1}{2}-\sigma} \FF{p}{U}{q}{\bfa}{\bfb}{\frac{1}{\zeta z^{1/d}}}\text{.}
+\end{equation*}
+\end{lemma}
+The parameter symmetries in the following lemma indicate that a more symmetric defintion of the $U(z)$ series is in order. For now we keep the $(\bfa ; \bfb)$ of the original hypergeometric differential equation, but a notation where the following symmetry is self-evident would be more desirable.
+\begin{lemma}
+\label{lemma_pUq_inv} $\FF{p}{U}{q}{\bfa}{\bfb}{z} = \FF{p}{U}{q}{1-b_i+\bfa}{1-b_i+(1,\hat{\bfb}_{i})}{z}$.
+\end{lemma}
+
+\begin{lemma}
+Set $\sigma_i = \Sigma\bfb^i-\Sigma\bfa^i$ so that $\sigma_1 = \sigma$ and $\sigma_0 = d-1$. For any $|\arg(-z)| \le \pi$, we have the asymptotic expansion in integral powers of $z$ as $z \to 0$,
+\begin{gather*}
+\FF{p}{U}{q}{\bfa}{\bfb}{z} \sim 1+ \left(\frac{(d-1)(d-11)}{24 d}+\frac{\sigma _1}{d}+\frac{\sigma _1^2}{2
+   d}-\frac{\sigma
+   _2}{2}\right)z\\
++\left(\frac{(d-1)\left(d^3-23 d^2+359 d-769\right)}{1152 d^2} +\frac{\left(d^2-24 d+47\right) \sigma _1}{24d^2} + \frac{\left(d^2-12 d+95\right) \sigma _1^2}{48d^2} \right.\\
+\left. -\frac{\left(d^2-12 d+47\right) \sigma_2}{48 d}+\frac{5\sigma_1^3}{6d^2}-\frac{\sigma_1 \sigma_2}{d}+\frac{\sigma_3}{6}+ \frac{\sigma _1^4}{8 d^2}-\frac{\sigma_1^2 \sigma _2}{4d}+\frac{\sigma
+   _2^2}{8}\right)z^2+\cdots\text{.}
+\end{gather*}
+\end{lemma}
+
+\begin{remark}
+We have $\FFf{0}{U}{2}{\tfrac{1}{3},\tfrac{2}{3}}{z}=1$ and the following approximation of the size of the discontinuity in $\FFf{0}{U}{2}{\tfrac{1}{3},\tfrac{1}{2}}{z}$, with a plot of the imaginary part of $U(z)$ shown below.
+\begin{equation*}
+\frac{\FFf{0}{U}{2}{\tfrac{1}{3},\tfrac{1}{2}}{x-\epsilon \ii}-\FFf{0}{U}{2}{\tfrac{1}{3},\tfrac{1}{2}}{x+ \epsilon \ii}}{2\ii} \sim \begin{cases}
+\ee^{-\frac{9}{2x}} \sin \left(\frac{2 \pi }{9}-\frac{3 \sqrt{3}}{2 x}\right)\text{,} & x \text{ small}\\
+\frac{1}{4} \Gamma\left(\frac{2}{3}\right) \sqrt{\frac{3}{\pi }} \, x^{1/6}\text{,} & x \text{ large}
+\end{cases}\text{,} \quad x > 0.
+\end{equation*}
+\begin{center}
+\includegraphics[width=400pt]{pfq_im}
+\end{center}
+\end{remark}
+
+\subsection{solutions with prescribed asymptotics}
+The $q+1$ functions $F_{\beta}(z) := z^{1-\beta} {}_p F_q ( (1,1-\beta+\mathbf{a}); 1-\beta+(1,\mathbf{b}) | z)$ are \footnote{with limiting cases when the list $(1,\bfb)$ has duplicates modulo $\mathbb{Z}$} a basis for the solutions of the hypergeometric differential equation for $\beta \in (1,\bfb) = 1,b_1,\dots,b_q$. A restatement of \eqref{divrecp} gives the reciprocal algebraic solutions.
+\begin{equation}
+\label{algasymp}
+\begin{aligned}
+(-z)^{-a_i} \FFe{q+1}{F}{p-1}{-}{a_i,1+a_i-\mathbf{b}}{1+a_i-\hat{\mathbf{a}}_i}{\frac{(-1)^d}{z}} = \frac{((-1)^{d+1}z)^{a_i}}{(-z)^{a_i}}\frac{\Gamma(1-\mathbf{b})\Gamma(1+a_i-\hat{\bfa}_i)}{\Gamma(1-\hat{\bfa}_i) \Gamma(1+a_i-\bfb)} F_{1}(z)\\
++\sum_{j=1}^{q} \frac{((-1)^{d+1} z)^{a_i+1-b_j}}{(-z)^{a_i} z^{1-b_j}} \frac{\Gamma(b_j-(1,\hat{\bfb}_j)) \Gamma(1+a_i-\hat{\bfa}_i)}{\Gamma(b_j-\hat{\bfa}_i)\Gamma(1+a_i-(1,\hat{\bfb}_j))} F_{b_j}(z)
+\end{aligned}
+\end{equation}
+Discontinuities on $\mathbb{R}$ in the connection coefficients have already appeared, and we write $\pm = \tfrac{1}{\pi \ii}(\log(z)-\log(-z))$ and $\mp = - \pm = \tfrac{1}{\pi \ii}(\log(-z)-\log(z))$. For example,
+\begin{equation*}
+\begin{array}{cc}
+\begin{aligned}
+z^b (-z)^{-b} &= \ee^{\pm \pi \ii b}\\
+z^{-b} (-\sqrt{z})^{2b} &= \ee^{\mp 2 \pi \ii b}\\
+z^{-b} (\ii z^{1/4})^{4b} &= \ee^{2 \pi \ii b}\\
+\end{aligned}
+\quad
+\dfrac{((-1)^{d+1}z)^{a_i}}{(-z)^{a_i}} =
+\begin{cases}
+\ee^{\pm \pi \ii a_i}\text{,} & d \text{ odd}\\
+1\text{,} & d \text{ even}
+\end{cases}
+\end{array}
+\end{equation*}
+The connection between the $p$ algebraic asymptotic solutions and the $F_{\beta}(z)$ is given in \eqref{algasymp}. The remaining $d$ asymptotic solutions are the $f_{\zeta}(z)$ of Lemma \ref{pUq_def}. The continuity of these functions is shown in Figure \ref{stars} and may be summarized as
+\begin{enumerate}
+\item{$f_{\zeta}(z)$ is discontinuous on $\mathbb{R}_{-}$ for all $\zeta$ (thick black arrows).}
+\item{$f_1(z)$ is discontinuous on $\mathbb{R}_{+}$ because $U(z)$ is (squiggly line on $\mathbb{R}_{+}$).}
+\item{$f_{-1}(z)$ (for $d$ even) is discontinuous on $\mathbb{R}_{+}$ because $(-z^{1/d})^{\frac{d-1}{2}-\sigma}$} is (squiggly line on $\mathbb{R}_{-}$).
+\item{$f_{\zeta}(z)$ is otherwise continuous.}
+\item{$f_{\zeta}(\mathbb{R}_{-} + \epsilon \ii)$ and $f_{\ee^{2\pi \ii/d}\zeta}(\mathbb{R}_{-} - \epsilon \ii)$ can generally be identified, i.e. glued together. This fails (squiggly line on $\mathbb{R}_{-}$) only when $d$ is odd and the two sections $\zeta z^{1/d}$ and $\ee^{2\pi \ii/d}\zeta z^{1/d}$ cross $\mathbb{R}_{-}$, thus incurring the discontinuity of $(\zeta z^{1/d})^{\frac{d-1}{2}-\sigma}$.}
+\end{enumerate}
+
+\begin{figure}[h]
+\begin{center}
+\begin{tikzpicture}[scale=3.25]
+\fill[color=black!15](0.0,0.0)--(-0.809017,0.587785)--(-0.809017,-0.587785)--cycle;
+\draw[->,black,thick](0.0,0.0)--(0.809017,0.587785);
+\draw[-,black,thin](0.0,0.0)--(0.875,0.0);
+\draw[->,black,thick](0.0,0.0)--(-0.309017,0.951057);
+\draw[-,black,thin](0.0,0.0)--(0.27039,0.832174);
+\draw[->,black,thick](0.0,0.0)--(-1.0,0.001);
+\draw[-,black,thin](0.0,0.0)--(-0.70789,0.514312);
+\draw[->,black,thick](0.0,0.0)--(-0.309017, -0.951057);
+\draw[-,black,thin](0.0,0.0)--(0.27039, -0.832174);
+\draw[->,black,thick](0.0,0.0)--(0.809017,-0.587785);
+\draw[-,black,thin](0.0,0.0)--(-0.70789,-0.514312);
+\draw[->,black,thick,decorate,decoration={coil,aspect=0.01,amplitude=.5mm, segment
+length=1.5mm,post length=0.5mm}](0.0,0.0)--(1.0,0.0);
+\draw[->,black,thick,decorate,decoration={coil,aspect=0.01,amplitude=.5mm, segment
+length=1.5mm,post length=0.5mm}](0.0,0.0)--(-1.0,0.0);
+\draw[] (1.25,0.0) node[black] {\scriptsize $z^{1/d}$};
+\draw[] (0.386271, 1.18882) node[black] {\scriptsize $\ee^{2\pi i/d} z^{1/d}$};
+\draw[] (-1.18, 0.8) node[black] {\scriptsize $-\ee^{-\pi i/d} z^{1/d}$};
+\draw[] (-1.18, -0.82) node[black] {\scriptsize $-\ee^{\pi i/d} z^{1/d}$};
+\draw[] (0.386271, -1.18882) node[black] {\scriptsize $\ee^{-2\pi i/d} z^{1/d}$};
+\draw[] (0.59441, 0.193136) node[black] {\scriptsize $+$};
+\draw[] (0.00000, 0.625000) node[black] {\scriptsize $+$};
+\draw[] (-0.59441, 0.193136) node[black] {\scriptsize $+$};
+\draw[] (-0.367366, -0.505636) node[black] {\scriptsize $+$};
+\draw[] (0.367366, -0.505636) node[black] {\scriptsize $+$};
+\draw[] (0.59441, -0.193136) node[black] {\scriptsize $-$};
+\draw[] (0.00000, -0.625000) node[black] {\scriptsize $-$};
+\draw[] (-0.59441, -0.193136) node[black] {\scriptsize $-$};
+\draw[] (-0.367366, +0.505636) node[black] {\scriptsize $-$};
+\draw[] (0.367366, +0.505636) node[black] {\scriptsize $-$};
+\draw[<->](0.95922, -0.587811)arc(-31.5:31.5:1.125);
+\draw[<->](0.855457, 0.730629)arc(40.5:103.5:1.125);
+\draw[<->](-0.430519, 1.03936)arc(112.5:175.5:1.125);
+\draw[<->](-1.12153, -0.0882665)arc(184.5:247.5:1.125);
+\draw[<->](-0.262626, -1.09392)arc(256.5:319.5:1.125);
+\end{tikzpicture}
+\begin{tikzpicture}[scale=3.25]
+\fill[color=black!15](0.0,0.0)--(-0.707107,0.707107)--(-0.707107,-0.707107)--cycle;
+\draw[->,black,thick](0.0,0.0)--(0.707107,0.707107);
+\draw[-,black,thin](0.0,0.0)--(0.875,0.0);
+\draw[->,black,thick](0.0,0.0)--(-0.707107,0.707107);
+\draw[-,black,thin](0.0,0.0)--(0.0,0.875);
+\draw[->,black,thick](0.0,0.0)--(-0.707107,-0.707107);
+\draw[-,black,thin](0.0,0.0)--(-0.875,0.0);
+\draw[->,black,thick](0.0,0.0)--(0.707107,-0.707107);
+\draw[-,black,thin](0.0,0.0)--(0.0, -0.875);
+\draw[->,black,thick,decorate,decoration={coil,aspect=0.01,amplitude=.5mm, segment
+length=1.5mm,post length=0.5mm}](0.0,0.0)--(1.0,0.0);
+\draw[->,black,thick,decorate,decoration={coil,aspect=0.01,amplitude=.5mm, segment
+length=1.5mm,post length=0.5mm}](0.0,0.0)--(-1.0,0.0);
+\draw[] (1.25,0.0) node[black] {\scriptsize $z^{1/d}$};
+\draw[] (0.0, 1.25) node[black] {\scriptsize $\ee^{2\pi i/d} z^{1/d}$};
+\draw[] (-1.3, 0.0) node[black] {\scriptsize $-z^{1/d}$};
+\draw[] (0.0, -1.25) node[black] {\scriptsize $\ee^{-2\pi i/d} z^{1/d}$};
+\draw[] (0.577425, 0.239177) node[black] {\scriptsize $+$};
+\draw[] (-0.239177, 0.577425) node[black] {\scriptsize $+$};
+\draw[] (-0.577425, -0.239177) node[black] {\scriptsize $+$};
+\draw[] (0.239177, -0.577425) node[black] {\scriptsize $+$};
+\draw[] (0.577425, -0.239177) node[black] {\scriptsize $-$};
+\draw[] (-0.239177, -0.577425) node[black] {\scriptsize $-$};
+\draw[] (-0.577425, +0.239177) node[black] {\scriptsize $-$};
+\draw[] (0.239177, +0.577425) node[black] {\scriptsize $-$};
+\draw[<->](0.869637, -0.713692)arc(-39.375:39.375:1.125);
+\draw[<->](0.713692, 0.869637)arc(50.625:129.375:1.125);
+\draw[<->](-0.869637, 0.713692)arc(140.625:219.375:1.125);
+\draw[<->](-0.713692, -0.869637)arc(230.625:309.375:1.125);
+\end{tikzpicture}
+\end{center}
+\caption{$f_{\zeta}$ glue and cuts for $d$ odd (Left) and $d$ even (Right)}
+\label{stars}
+\end{figure}
+
+Therefore, we will continue determining the connection coefficients on each of the two half planes $\mathbb{C}_{-} = \{z |\Im z < 0\}$, where $\pm=-1$, and $\mathbb{C}_{+} = \{z |\Im z > 0\}$, where $\pm=+1$,
+and leave the determination of the connection coefficients on $\mathbb{R}$, which is largely a matter of convention, to the next section. For a given $d^{\text{th}}$ root of unity $\zeta$ (and $z \in \mathbb{C} \setminus \mathbb{R}$), determine the even integer $\ell$ from $\pi \ell =\mp d \arg(\zeta^{\mp1})$ and the integer $k$ from $\pi k =\mp d \arg(-\zeta^{\mp1})$. The $f_{\zeta}$ in the $F_{\beta}$ basis are given by
+\begin{equation}
+\label{fzeta}
+f_{\zeta}(z) = \frac{\ee^{\pi \ii \operatorname{sgn}(\ell \pm 1) (\frac{d-1}{2}-\sigma)}}{d^{-\frac{1}{2}}(2\pi)^{\frac{d-1}{2}}} \left(\frac{\Gamma(1-\bfb)}{\Gamma(1-\bfa)} F_1(z) + \sum_{j=1}^{q} \ee^{k \pi i (1-b_j)}\frac{\Gamma(b_j - (1,\hat{\bfb}_j))}{\Gamma(b_j-\bfa)} F_{b_j}(z) \right) \text{.}
+\end{equation}
+We will prove this first for the asymptotically smallest solution on each half plane, which corresponds to the shaded region in Figure \ref{stars}. Note that since these regions straddle $\mathbb{R}_{-}$, they correspond to two different values of $\zeta$ when $d$ is odd. We would like to show these solutions in the $F_{\beta}(z)$ basis are
+\begin{align*}
+f_{-1}(z) &= \eqref{fzeta} \text{ with } \operatorname{sgn}(\ell \pm 1) = \mp\text{, and } k = 0\text{,} \quad & d \text{ even}\text{,}\\
+f_{-\ee^{\mp\pi i/d}}(z) &= \eqref{fzeta} \text{ with } \operatorname{sgn}(\ell \pm 1) = \pm\text{, and } k = \mp \text{,} \quad & d \text{ odd}\text{.}
+\end{align*}
+These identities follow by observing that the right hand parenthesized sums are the sums of all $s$-residues of
+\begin{equation*}
+-\frac{\Gamma(1-s-(1,\bfb))}{\Gamma(1-s-\bfa)} z^s \times \begin{cases}
+1\text{,} & d \text{ even}\\
+\ee^{\mp \pi i s}\text{,} & d \text{ odd}
+\end{cases}\text{.}
+\end{equation*}
+The asymptotic value of the integral around all poles can be deduced by deforming the contour to an essentially vertical one passing through the saddle point near $s=-z^{1/d}$ and tending to $\pm i \infty$ along the path of steepest descent. The equality holds due to the uniqueness of the minimal solution.
+
+Now, since the $F_{\beta}(z)$ are either entire or have simple prefactors as $z$ makes one trip around the origin, it is a simple matter to transform these minimal solutions back to an arbitrary $f_{\zeta}(z)$ by moving $z$ around the origin a few times in either direction and using the $\mathbb{C}_{+}$ and $\mathbb{C}_{-}$ gluings in point 5. This gives \eqref{fzeta} and these $d$ expansions along with the $p$ expansions in \eqref{algasymp} give a $(d+p)\times(d+p)$ matrix whose inverse has first row
+\begin{equation}
+\label{entirerecp2}
+\begin{alignedat}{1}
+\FF{p}{F}{q}{\mathbf{a}}{\mathbf{b}}{z}&=\sum_{i=1}^{p} \frac{\Gamma(\mathbf{b}) \Gamma(\hat{\mathbf{a}}_i-a_i)}{\Gamma(\hat{\mathbf{a}}_i)\Gamma(\mathbf{b}-a_i)} (-z)^{-a_i} \FFe{q+1}{F}{p-1}{-}{a_i,1+a_i-\mathbf{b}}{1+a_i-\hat{\mathbf{a}}_i}{\frac{(-1)^d}{z}}\\
+&+\sum_{\zeta^d=1} c_{\zeta}^{(\pm)} (\bfa; \bfb) \frac{\Gamma(\mathbf{b})}{d^{\frac{1}{2}} (2 \pi )^{\frac{d-1}{2}} \Gamma(\mathbf{a})} \ee^{d \zeta z^{1/d}}(\zeta z^{1/d})^{\frac{d-1}{2}-\sigma} \FFe{p}{U}{q}{-}{\bfa}{\bfb}{\frac{1}{\zeta z^{1/d}}}\text{,}
+\end{alignedat}
+\end{equation}
+and this is the correct form of \eqref{entirerecp}. The $c_{\zeta}^{(\pm)}$ here are interesting combinatorial exponential sums: with the even integer $\ell$ determined uniquely as before from $\pi \ell = \mp d \arg(\zeta^{\mp1})$, they are
+\begin{align*}
+c_{\zeta}^{(\pm)}(\bfa; \bfb) &=\sum_{\substack{0 \le n_1, \dots, n_p \\ 0 \le m_1, \dots, m_q \le 1 \\ \Sigma \bfn + \Sigma \bfm = (|\ell \pm 1|-1)/2}}{ \ee^{2\pi \ii \operatorname{sgn}\left(\ell\pm 1\right) (\bfn \cdot \bfa + \mathbf{m} \cdot (\bfb + \frac{1}{2}))}}\text{.}
+\end{align*}
+The form of these exponential sums follows from, for any $p \ge 1$, $\bfx \in \mathbb{C}^p$, $\bfy \in \mathbb{C}^q$ and $0 \le w \le q$,
+\begin{align*}
+\sum_{\substack{0 \le n_1, \dots, n_p \\ 0 \le m_1, \dots, m_q \le 1 \\ \Sigma \bfn + \Sigma \bfm = w}}{ \bfx^\bfn (-\bfy)^\bfm} &= \sum_{j=1}^{p}\sum_{i=0}^{w} \frac{x_j^{i+p-1} \Pi_{w-i}(-\bfy)}{\Pi (x_j-\hat{\bfx}_j)}\\
+&=\sum_{j=1}^{p} \sum_{i=1}^{q} \frac{x_j^{p-1} \Pi_w(-\hat{\bfy}_i) \Pi(x_j-\hat{\bfy}_i)}{\Pi(x_j - \hat{\bfx}_j) \Pi (y_i-\hat{\bfy}_i)}\text{, for } w < q\text{,}
+\end{align*}
+which arise when inverting the matrix. Here, $\bfx^{\bfn} = \prod_i x_i^{n_i}$, $\Pi(\bfx)$ gives the product of the $x_i$, and $\Pi_w(\bfx)$ is the $w^{\text{th}}$ symmetric polynomial in the $x_i$. See, for example, Lemma \ref{lemmatrig} below.
+
+\subsection{real problems}
+Being the sum of $q+1$ discontinuous functions, the right hand side of \eqref{entirerecp2} miraculously represents a continuous function. Here we simply make the observation that \eqref{entirerecp2} remains valid if $\pm = \tfrac{1}{\pi i}(\log(z)-\log(-z))$ (and the $F_{b_j}(z)$) retain the standard counterclockwise continuity on $\mathbb{R}$ and the functions ${}_{q+1}F_{p-1}$ and ${}_p U_{q}$ are evaluated with the nonstandard clockwise continuity. This is already present in $\eqref{algasymp}$ for ${}_{q+1}F_{p-1}^{-}$, and \eqref{fzeta} gives $f_{\zeta}(z)$ the counterclockwise continuity, which gives ${}_p U_q$ the clockwise continuity: ${}_{q+1}F_{p-1}$ and ${}_p U_{q}$ need the clockwise continuity simply because $1/z$ flips the orientation.
+
+There are many problems with the asymptotic formula for ${}_p F_{q}(z)$ on $\mathbb{R}$. First, on $z>0$ the asymptotically largest exponential term has a discontinuity due to that of ${}_p U_{q}(z)$. Then, on $z<0$ the smallest exponential term has a discontinuity arising from the algebraic prefactor. The non-exponential algebraic terms also have discontinuities on either side of $\mathbb{R}$ depending on the parity of $d$. Finally, the most serious problem is that \eqref{entirerecp2} implies that ${}_p F_{q}(z)$ has infinitely many zeros in any sector $|\arg(-z)| < \epsilon$ for $d>2$, and thus near $z<0$ massive cancellation among the components of the asymptotic formula is possible when $d>2$.
+
+The bad situation near $z<0$ can be illustrated explicitly by continuing with the example of $\FFf{0}{F}{2}{\tfrac{1}{3},\tfrac{1}{2}}{z}$. For $x>0$ a rearrangement of the three terms of \eqref{entirerecp2} gives
+\begin{equation}
+\label{optimized}
+\begin{aligned}
+\FFf{0}{F}{2}{\tfrac{1}{3},\tfrac{1}{2}}{-x^3} &= \frac{\Gamma\left(\frac{1}{3}\right)}{\sqrt{3 \pi }} \ee^{3 x/2} x^{1/6} \cos \left(\frac{\pi}{18} + \frac{3 \sqrt{3}
+   x}{2}\right)\frac{U(-\ee^{-2 \pi \ii/3}/x)+U(-\ee^{2 \pi \ii/3}/x)}{2}\\
+&+\frac{\Gamma\left(\frac{1}{3}\right)}{\sqrt{3 \pi }} \ee^{3 x/2} x^{1/6} \sin \left(\frac{\pi }{18} + \frac{3 \sqrt{3}
+   x}{2}\right)
+   \frac{U(-\ee^{-2\pi \ii/3}/x)-U(-\ee^{2\pi \ii/3}/x)}{2\ii}\\
+ &+\frac{\sqrt{3}}{2} \frac{\Gamma\left(\frac{1}{3}\right)}{\sqrt{3 \pi }} \ee^{-3x} x^{1/6} U(-1/x)
+\text{.}
+\end{aligned}
+\end{equation}
+What is to be gained from rewritting the formula this way? First, since the two fractions involving $U$ are just the real and imaginary parts of $U$, each of the three terms on the right hand side is a real number. Second, since $U(z) \sim 1-\frac{1}{108}z + \cdots$, it is clear that, as long as the value of the cosine is not too small, a good relative approximation for $x$ large is given by
+\begin{equation*}
+\FFf{0}{F}{2}{\tfrac{1}{3},\tfrac{1}{2}}{-x^3} \approx \frac{\Gamma\left(\frac{1}{3}\right)}{\sqrt{3 \pi }} e^{3 x/2} x^{1/6}
+   \cos \left(\frac{\pi }{18} + \frac{3 \sqrt{3}
+   x}{2}\right)
+\end{equation*}
+and that the zeros of $F(z)$ on $z<0$ occur approximately where the value of the cosine is zero. Finally, however, this formula does not help much in evaluating $F(z)$ near such a zero: the cosine term and sine term cannot be simultaneously small and hence must cancel each other out at a zero of $F(z)$. This is detailed in the following table, which shows how close the zeros of $F(-x^3)$ are to the zeros of the cosine, the magnitude of the first term in the ``optimized" formula \eqref{optimized} at the roots, and the magnitude of the first term in the plain formula \eqref{entirerecp2} also at the roots. With $x_n \approx 2\pi(9n+4)/(27 \sqrt{3})$ denoting the $n^{\text{th}}$ root of $F(-x^3)$ on $x>0$, we have
+
+\begin{center}
+\begin{tabular}{c|ccc}
+$n$ & $\frac{\frac{2\pi(9n+4)}{27 \sqrt{3}} - x_n}{\frac{1}{324 x_n}}$ & $|$First term of \eqref{optimized}$|$ & $|$First term of \eqref{entirerecp2}$|$ \\[-2.0ex] \\ \hline \\ [-2ex]
+ $20$ & $0.9805$ & $6.024\cdot10^{12}$ & $9.472\cdot10^{15}$ \\
+ $25$ & $0.9843$ & $4.375\cdot10^{16}$ & $8.529\cdot10^{19}$ \\
+ $30$ & $0.9869$ & $3.280\cdot10^{20}$ & $7.630\cdot10^{23}$ \\
+ $35$ & $0.9887$ & $2.513\cdot10^{24}$ & $6.794\cdot10^{27}$ \\
+ $40$ & $0.9901$ & $1.957\cdot10^{28}$ & $6.030\cdot10^{31}$ \\
+ $45$ & $0.9912$ & $1.544\cdot10^{32}$ & $5.338\cdot10^{35}$ \\
+ $50$ & $0.9921$ & $1.230\cdot10^{36}$ & $4.715\cdot10^{39}$
+\end{tabular}
+\end{center}
+In conclusion, the real roots of $\FFf{0}{F}{2}{\tfrac{1}{3},\tfrac{1}{2}}{-x^3}$ are a distance of approximately $\tfrac{1}{324} x^{-1}$ away from the roots of the cosine and the optimized formula only reduces the size of the first term by a miniscule amount. Suppose we are at a root $z=-x^3$ of $\FFf{0}{F}{2}{\tfrac{1}{3},\tfrac{1}{2}}{z}$ and would like to prove numerically that $|\FFf{0}{F}{2}{\tfrac{1}{3},\tfrac{1}{2}}{-x^3}|<2^{-m}$. Since
+\begin{align*}
+|\text{first term of \eqref{entirerecp2}}| &\approx \frac{\Gamma(\tfrac13)}{2 \sqrt{3 \pi}} \ee^{3x/2} x^{1/6}\text{,}\\
+|\text{first term of \eqref{optimized}}| &\approx \frac{\Gamma(\tfrac13)}{216 \sqrt{\pi}} \ee^{3x/2} x^{-5/6}\text{,}
+\end{align*}
+the formulas \eqref{entirerecp2} and \eqref{optimized} require $O(x+m)$ bits of the $U$-factors, and thus are no better than \eqref{Fdef}, which requires at least $O(x)$ terms.
+
+
+\subsection{the case $q=1$} This includes all Bessel functions, Airy functions, and confluent functions, and it is worth mentioning that the ${}_p U_{q}$ series are hypergeometric.
+\begin{align*}
+\FFf{0}{U}{1}{b_1}{z} &= \FFf{2}{F}{0}{-\tfrac{1}{2}+b_1, \tfrac{3}{2}-b_1}{\tfrac{1}{4}z}\text{,}\\
+\FFf{1}{U}{1}{a_1;b_1}{z} &= \FFf{2}{F}{0}{1-a_1, b_1-a_1}{z}\text{.}
+\end{align*}
+
+\section{The $G$ function}
+
+\newcommand{\bfalpha}[0] {\pmb{\alpha}}
+\newcommand{\bfgamma}[0] {\pmb{\gamma}}
+\newcommand{\bfbeta}[0]  {\pmb{\beta}}
+\newcommand{\bfdelta}[0] {\pmb{\delta}}
+
+The parameters are
+\begin{itemize}
+\item{$0 \le n \le p$ and $0 \le m \le q$}
+\item{$\bfa = (\bfalpha, \bfgamma) \in \mathbb{C}^{p}$, $\bfalpha = a_1, \dots, a_n$, $\bfgamma = a_{n+1}, \dots, a_p$}
+\item{$\bfb = (\bfbeta, \bfdelta) \in \mathbb{C}^{q}$, $\bfbeta = b_1, \dots, b_m$, $\bfdelta = b_{m+1}, \dots, b_q$}
+\item{$a_i-b_j \neq 1, 2, \dots$ for any $i \le n$ and $j \le m$, that is, $\Gamma(1-\bfalpha+s)$ and $\Gamma(\bfbeta-s)$ share no poles.}
+\item{$z \in \mathbb{C}$ with $z \neq 0$}
+\end{itemize}
+The possible paths in the definition $ G_{p,q}^{m,n} (z |\bfalpha, \bfgamma; \bfbeta, \bfdelta) = \int \frac{\Gamma(\bfbeta-s)\Gamma(1-\bfalpha+s)}{\Gamma(1-\bfdelta+s)\Gamma(\bfgamma-s)}z^s\frac{ds}{2 \pi \ii}$ are
+\begin{enumerate}
+\item{from $-\ii \infty$ to $+ \ii \infty$, separating the poles of $\Gamma(1-\bfalpha+s)$ from those of $\Gamma(\bfbeta-s)$, converges for $|\arg(z)| < (m+n-\tfrac{1}{2}(p+q)) \pi$}
+\item{encircle the poles of $\Gamma(\bfbeta-s)$ clockwise}
+\item{encircle the poles of $\Gamma(1-\bfalpha+s)$ counterclockwise}
+\end{enumerate}
+By the shift $s \to s+1$, the function $G((-1)^{p-m-n}z)$ is a solution to a hypergeometric differential equation:
+\begin{equation*}
+(z \partial_z - b_1)\cdots (z \partial_z - b_q)-(z \partial_z - a_1) \cdots (z \partial_z - a_p) z = 0\text{.}
+\end{equation*}
+Thus it suffices to connect it to some ${}_p F_q$ \footnote{or limiting cases thereof}.
+
+\subsection{The case $q>p$}
+Set $d = q-p$. Path 2 gives
+\begin{equation}
+\label{eq_Gpath2}
+G(z) = \sum_{j=1}^{m} \frac{\Gamma(\hat{\bfbeta}_j - b_j)\Gamma(1+b_j-\bfalpha)}{\Gamma(\bfgamma-b_j)\Gamma(1+b_j-\bfdelta)} z^{b_j}\FF{p}{F}{q-1}{1+b_j-\bfa}{1+b_j-\hat{\bfb}_j}{(-1)^{p-m-n}z}\text{,}
+\end{equation}
+and this is useful if $|z|$ is not too large. We need the asymptotic expansion of $G(z)$ for large $z$. What is interesting here is that the poles of $\Gamma(1-\bfalpha+s)$ do not even give a hint of the correct algebraic portion; we have from \eqref{entirerecp2},
+\begin{align*}
+G((-1)^{p-m-n}z) &= \sum_{i=1}^{n} \frac{h_{i}^{(\pm)}(\bfalpha, \bfgamma; \bfbeta, \bfdelta)}{(2\pi \ii)^{p-n} } \frac{\Gamma(a_i-\hat{\bfa}_i)\Gamma(1-a_i+\bfbeta)}{\Gamma(a_i-\bfdelta)} (-z)^{a_i-1}\FF{q}{F}{p-1}{1-a_i+\bfb}{1-a_i+\hat{\bfa}_i}{\frac{(-1)^{d}}{z}}\\
+&+\sum_{\zeta^d=1} \frac{g_{\zeta}^{(\pm)}(\bfalpha, \bfgamma; \bfbeta, \bfdelta)}{d^{\frac{1}{2}} (2\pi)^{\frac{d-1}{2}} (2\pi \ii)^{1+p-m-n}} \ee^{d \zeta z^{1/d}}(\zeta z^{1/d})^{\Sigma \bfb - \Sigma \bfa - \frac{d-1}{2}} \FF{p}{U}{q-1}{1+b_j-\bfa}{1+b_j-\hat{\bfb}_j}{\frac{1}{\zeta z^{1/d}}}\text{,}
+\end{align*}
+where the ${}_p U_{q-1}$'s on the right hand side are independent of the choice of $j$ (Lemma \ref{lemma_pUq_inv}), and the $h_i$ and $g_{\zeta}$ are entire functions of the parameters.
+\begin{align*}
+h_{i}^{(\pm)}\left(\begin{array}{c} \bfalpha, \bfgamma \\ \bfbeta, \bfdelta \end{array}\right) &= \sum_{j=1}^{m} \frac{\sin \pi (b_j-\bfgamma) \sin \pi (a_i-\hat{\bfbeta}_j)}{\sin \pi (b_j-\hat{\bfbeta}_j)} (2 \ii)^{p-n} \times \begin{cases} 1\text{,}& p-m-n \text{ odd}\\
+-\ee^{\pm \pi \ii b_j}\text{,}& p-m-n \text{ even}\end{cases}\\
+&= \ee^{-\pi \ii (\Sigma \bfgamma + (m-1) a_i)} \times \text{some Laurent polynomial in } \ee^{2\pi \ii (\bfa, \bfb)}
+\end{align*}
+\begin{align*}
+g_{\zeta}^{(\pm)}\left(\begin{array}{c} \bfalpha, \bfgamma \\ \bfbeta, \bfdelta \end{array}\right) &= \sum_{j=1}^{m} \frac{\sin \pi (\bfgamma - b_j) \, c_{\zeta}^{(\pm)}(-\bfa; -\hat{\bfb}_j)}{\sin \pi (\hat{\bfbeta}_j-b_j)} (2 \ii)^{1+p-m-n} \times \begin{cases} \ee^{-\operatorname{pm}(\mp \zeta^{\mp})\pi \ii b_j}\text{,}& p-m-n \text{ odd}\\
+\ee^{(\operatorname{pm}(\pm \zeta^{\mp}) \pm 1) \pi \ii b_j}\text{,}& p-m-n \text{ even}\end{cases}\\
+&= \ee^{-\pi \ii (\Sigma \bfgamma + \Sigma \bfbeta)} \times \text{some Laurent polynomial in } \ee^{2\pi \ii (\bfa, \bfb)}
+\end{align*}
+where $\operatorname{pm}(w) := \frac{1}{\pi \ii}(\log(w)-\log(-w))$ so that $\pm = \operatorname{pm}(z)$. The general form of these polynomials is too complicated to be of use: they should be generated once the parameters counts $m,n,p,q$ are fixed. The following lemma is useful to see that the above trigonometric sums with denominator are in fact entire exponential sums.
+\begin{lemma}
+\label{lemmatrig}
+Set $\bfx = x_1, ..., x_m$ with $m \ge 1$. For any integer $k$,
+\begin{equation*}
+\sum_{i=1}^{m} \frac{x_i^k}{\Pi(x_i-\hat{\bfx}_i)} = \begin{cases} \sum\limits_{\substack{n_1, \dots, n_m \ge 0 \\ \Sigma \bfn = k+1-m}} \bfx^\bfn \text{,} & k \ge 0\\
+\sum\limits_{\substack{n_1, \dots, n_m < 0 \\ \Sigma \bfn = k+1-m}} \bfx^{\bfn} (-1)^{m-1} \text{,} & k < 0
+\end{cases}
+\end{equation*}
+\end{lemma}
+\begin{proof}
+Multiplying both sides by $y^k$ and summing over all $k \ge 0$ turns the right hand side into $y^{m-1} / \Pi(1-y\bfx)$ and the left and side into its partial fraction decomposition. The case $k < 0$ follows similarly.
+\end{proof}
+
+\subsection{The case $q<p$}
+Path 3 gives
+\begin{equation}
+\label{eq_Gpath3}
+G(z) = \sum_{i=1}^{n} \frac{\Gamma(a_i-\hat{\bfalpha}_i)\Gamma(1-a_i+\bfbeta)}{\Gamma(a_i-\bfdelta)\Gamma(1-a_i+\bfgamma)} z^{a_i-1}\FF{q}{F}{p-1}{1-a_i+\bfb}{1-a_i+\hat{\bfa}_i}{\frac{(-1)^{q-m-n}}{z}}\text{,}
+\end{equation}
+and this is useful if $|z|$ is not too small. However, since $G(z|\bfa; \bfb) = G(1/z|1-\bfb; 1-\bfa)$ modulo branch cut issues, there is no need whatsoever to consider this case.
+
+\subsection{The case $q=p$}
+The function is in general discontinuous on the unit circle. The expansion \eqref{eq_Gpath2} is valid for $|z| < 1$, and \eqref{eq_Gpath3} is valid for $|z| > 1$.
+
+\section{The $\Gamma$ function}
+We need to compute the $\Gamma$ function, and its derivatives in limiting cases.
+
+\section{implementation [section is boring, messy, incomplete]}
+
+\subsection{transformations of differential equations}
+We use $\theta := \theta_x := x \partial_x$ and note the non-commutative operator relation $\theta x^n = x^n (\theta+n)$. We maintain differential equation either in $x$ and $\theta$ (with $\theta$ either on the left or right) or in $x$ and $\partial$ (with $\partial$ on the right). The relation between powers of $\theta$ and powers of $\partial$ is given by
+\begin{align*}
+\theta^n x^m &= \sum_{i=0}^{n} \mathcal{S}_{n}^{(i)}(m) x^{m+i} \partial^i\text{,}\\
+x^{m+n} \partial^n &= x^m \theta (\theta-1)\cdots(\theta-(n-1)) =:x^m \theta^{(n)}\\
+&= (\theta-m)(\theta-(m+1))\cdots(\theta-(m+n-1))x^m
+\end{align*}
+where $v^{(n)}$ denotes the falling factorial and the specialization $m=0$ produces coefficients $\mathcal{S}_{n}^{(i)}(0)$ which are the Stirling numbers of the second kind.
+
+\subsubsection{rescale}
+For $T(f(x)) = f(s \xi)$, we have
+\begin{align*}
+T \partial_x &= 1/s \partial_{\xi} T\text{,}\\
+T \theta_x &= \theta_{\xi} T \text{,}\\
+T x &= s \xi T\text{.}
+\end{align*}
+
+\subsubsection{inflate}
+For $T(f(x)) = f(\xi^s)$, it is best to work with the $x-\theta_x$ form.
+\begin{align*}
+T \partial_x &= \xi^{1-s}/s \partial_{\xi} T\text{,}\\
+T \theta_x &= 1/s \theta_{\xi} T \text{,}\\
+T x &= \xi^s T\text{.}
+\end{align*}
+
+\subsubsection{Borel}
+For $T=\mathcal{B}_{1/d}$, it is best to work with the $x-\theta_x$ form.
+\begin{align*}
+T \theta_x &= \theta_{\xi} T\text{,}\\
+T x^{-1/d} &= \xi^{-1/d} d \theta_{\xi} T \text{,}\\
+T x^{-n/d} &= 
+\xi^{-n/d} (d \theta_\xi)^{(n)} T\text{.}
+\end{align*}
+
+\begin{lemma}
+If, for some polynomials $p_i$, $f(z)$ satisfies $\sum_{i=0}^{n} p_i(\theta_z) z^i f(z) = 0$,
+then $\hat{f}(\xi) = \mathcal{B}_{1/d}(f(z))$ satisfies $\sum_{i=0}^{n}(d (\theta_{\xi}-i))^{(d(n-i))} p_i(\theta_{\xi}) \xi^i \hat{f}(\xi) = 0$.
+\end{lemma}
+
+
+\subsubsection{shift}
+For $T(f(x)) = f(\xi+s)$, it is best to work with the $x-\partial_x$ form.
+\begin{align*}
+T \partial_x &= \partial_{\xi} T\text{,}\\
+T \theta_x &= (1+s/\xi) \theta_{\xi} T \text{,}\\
+T x &= (\xi+s) T\text{.}
+\end{align*}
+
+\subsubsection{Laplace}
+For $(Tf)(x) = \ee^{w x}\int_{0}^{x} \ee^{-w t} f(t) dt$, it is also best to work with the $x-\partial_x$ form where we can use
+\begin{equation*}
+(\partial_{x}- w) (Tf)(x) = f(x)\text{.}
+\end{equation*}
+
+
+
+\subsection{majorant method}
+
+This is a terse summary of ``Truncation Bounds for Differentially Finite Series'' by Messarobba. We would like to study the various functions
+\begin{equation*}
+F\left(z\right)\text{,} \quad F\left(\frac{1}{z}\right)\text{,} \quad F\left(1-z\right)\text{,} \quad  (1+z)^{-2a_p} F\left(\frac{4z}{(1+z)^2}\right)\text{,} \quad \dots
+\end{equation*}
+as convergent power series for $|z|<1$ as this allows for the computation of $F$ everywhere. In order to evaluate these power series, we need bounds on the coefficients, and tight bounds are already difficult to prove for ${}_2 F_1$ and ${}_3 F_2$. If we are not near the radius of convergence of these series, an overestimation of the coefficients is acceptable if it allows us to actually get proven bounds.
+
+Each of these functions $f(z)$ satisfies a homogeneous linear differential equation $P(f(z))=0$ which will we write in terms of $\theta = z \partial_z$. Since $z\theta = (\theta - 1)z$, we can write the operator $P$ with $\theta$ \emph{on the left}. When $\theta$ is on the left and $z$ is on the right, it is easy to transform the differential equation to a recurrsion on the coefficients. For example, for $F(z) = \FFf{2}{F}{1}{a_1,a_2;b_1}{z} = \sum_{n=0}^{\infty}{u_n} z^n$, we have
+
+\begin{equation*}
+P = (\theta+b_1-1)(\theta) - (\theta+a_1-1)(\theta+a_2-1)z \Leftrightarrow \frac{u_n}{u_{n-1}} = \frac{(n+a_1-1)(n+a_2-1)}{(n+b_1-1)(n)}
+\end{equation*}
+
+\subsubsection{coefficient recursions}
+Write the differential operator as $P(z,\theta) = \theta^r p_r(z) + \dots + \theta p_1(z) + p_0(z) = P_s(\theta) z^s + \dots + P_1(\theta) z + P_0(\theta) \in\mathbb{F}[z,\theta]$ with $\theta$ on the left and assume that $p_r(0) \neq 0$. Define the operator $L(z,\theta) = P(z,\theta) p_r(z)^{-1} = \sum_{j=0}^{\infty} Q_j(\theta) z^j$ and note that $\deg(Q_0(\theta)) = r$ and $\deg(Q_j(\theta)) < r$ for $j > 0$. Let $\lambda \in \overline{\mathbb{F}}$ denote a fixed root of $Q_0$ such that none of $\lambda-1, \lambda-2, \dots$ is a root of $Q_0$. Let $\mu(\nu)$ denote the multiplicity of $\nu$ as a root of $Q_0$ (or as a root of $P_0$). For a double sequence $\{u_{\lambda + n, k}\}_{n,k \ge 0}$, let
+\begin{equation*}
+u(z) = \sum_{\substack{n=0 \\ \nu=\lambda+n}}^{\infty} \sum_{k=0}^{\infty} u_{\nu,k} z^{\nu} \frac{\log^k z}{k!}\text{,}
+\end{equation*}
+be a solution to $P(z,\theta)(u(z)) = 0$. This is actually a polynomial in $\log z$, so let $\tau(n)$ be a nondecreasing integer-valued function of $n$ satisfying 
+$u_{\lambda+n, k} = 0$ for $k \ge \tau(n)$. We will see shortly that we can take $\tau(0) \le \mu(\lambda + 0)$ and $\tau(n) \le \tau(n-1)+\mu(\lambda+n)$. In terms of the operator $S_k$, which shifts a sequence $\{a_k\}_{k \ge 0}$ to $\{a_{k+1}\}_{k \ge 0}$, the differential equation says that
+\begin{equation*}
+P_0(\nu + S_k) u_{\nu} = - \sum_{j=1}^{s} P_j(\nu + S_k) u_{\nu - j}
+\end{equation*}
+Since $P_0(\nu + S_k) = S_k^{\mu(\nu)}( c_0 + c_1 S_k + \cdots )$, this equation allows us to determine all $u_{\lambda+n, k}$ with $k \ge \mu(\lambda+n)$ once the initial values $E_{\lambda} = \{u_{\lambda+n, k} \, | \, 0 \le k < \mu(\lambda+n)\}$ are determined. Considering all possible $\lambda$ gives $r$ linearly independent solutions to $P=0$.
+
+\subsubsection{tail bounds}
+Let $K < \tau(\infty)$ denote the higest power of $\log z$ occuring in $u(z)$, and consider the truncation
+\begin{equation*}
+\tilde{u}(z) = \sum_{n=0}^{N-1} \sum_{k=0}^{K} u_{\lambda + n,k} z^{\lambda + n} \frac{\log^k z}{k!}\text{,}
+\end{equation*}
+and the normalized residual $q(z)$ defined by $P(z,\theta)(\tilde{u}(z)) = Q_0(\theta) q(z)$. This has the form
+\begin{equation*}
+q(z) = \sum_{j=0}^{s-1} \sum_{k = 0}^{K} q_{\lambda + N + j, k} z^{\lambda + N + j} \frac{\log^k z}{k!}
+\end{equation*}
+where the $q_{\lambda+N}, \dots, q_{\lambda+N+s-1}$ can be computed from $P(z,\theta)$ and $u_{\lambda+N-1}, \dots, u_{\lambda+N-s}$.
+
+Consider
+$y(z) = p_r(z)(\tilde{u}(z) - u(z))$ as a solution of $L(z, \theta)(y(z)) = Q_0(\theta)(q(z))$. Suppose that for some $n_0 > 0$ we have constructed power series $\hat{a}(z) = \sum_{j>0} \hat{a}_j z^j$, $\hat{q}(z)  = \sum_{n>0} \hat{q}_n z^n$, and $\hat{y}(z) = \sum_{n \ge 0} \hat{y}_n z^n$ with nonnegative coefficients satisfying
+\begin{enumerate}
+\item For all $j > 0$ and $n \ge n_0$,
+\begin{equation*}
+n \sum_{t=0}^{\tau(n) - 1} \left| [X^t] \frac{Q_j(\lambda+n+X)}{X^{-\mu(\lambda+n)}Q_0(\lambda+n+X)} \right| \le  \hat{a}_j \text{.}
+\end{equation*}
+\item For all $n \ge n_0$ and $k \ge 0$, $| q_{\lambda+n,k}| \le \hat{q}_n$.
+\item $|y_{\lambda+n,k}| \le \hat{y}_n$ for all $n < n_0$ and $k \ge 0$.
+\item $|y_{\lambda+n,k}| \le \hat{y}_n$ for all $n \ge n_0$ and $k < \mu(\lambda + n)$.
+\item $\hat{y}(z)$ satsifies
+\begin{equation*}
+z \hat{y}'(z) = \hat{a}(z) \hat{y}(z) + \hat{q}(z)\text{.}
+\end{equation*}
+\end{enumerate}
+If all of these are true, we have $|z^{-\lambda} y(z)| \le \hat{y}(z)$. The reason for dividing the differential equation by $p_r(z)$ on the right is that $\deg Q_j < \deg Q_0$, so we can expect finite values for the $\hat{a}_j$.
+
+Now, we have
+\begin{equation*}
+\sum_{j=1}^{\infty} Q_j(\theta) z^j = \frac{P(z,\theta)}{p_r(z)} - Q_0(\theta)
+= \frac{P(z,\theta)}{p_r(z)} - \frac{P(0,\theta)}{p_r(0)} \text{.}
+\end{equation*}
+For all differential equations arising from hypergeometric functions considered here, $\sum_{j=1}^{\infty} Q_j(\theta) z^j$ will be a finite linear combination of functions of the form ($i, k \ge 0$)
+\begin{gather*}
+z^i, \quad z \partial_z \frac{z^i}{(1-z)^k}, \quad
+z \partial_z \log \left( \frac{1}{1-z} \right),\\
+z \partial_z \frac{z^i}{(1-z^2)^k}, \quad
+z \partial_z \log \left( \frac{1}{1-z^2} \right), \quad
+z \partial_z \log \left( \frac{1+z}{1-z} \right),
+\end{gather*}
+all with nonnegative coefficients as power series in $z$.
+
+\begin{remark}
+This is not accurate for equations arising from Borel resummation, where the list needs to be augmented by
+\begin{align*}
+z \partial_z \log\left(\frac{1}{1-\alpha z}\right) &\ll z \partial_z \log\left(\frac{1}{1-|\alpha| z}\right)\\
+z \partial_z \frac{z^i}{(1-\alpha z)^k} &\ll z \partial_z\frac{z^i}{(1-|\alpha| z)^k}
+\end{align*}
+\end{remark}
+
+The coefficients of the linear combination, say $f_j(\theta)$, will be polynomials in $\theta$. Bounding the combinations
+\begin{equation*}
+n \sum_{t=0}^{\tau(n) - 1} \left| [X^t] \frac{f_j(\lambda+n+X)}{X^{-\mu(\lambda+n)} Q_0(\lambda+n+X)} \right|
+\end{equation*}
+for each $j$ and for all $n \ge n_0$ will give a valid $\hat{a}(z)$ and a nice formula for $\hat{h}(z) = \exp \int_0^z \hat{a}(z)/z dz$. It now suffices to choose a $\hat{q}(z)$ so that
+\begin{equation*}
+\hat{y}(z)=\hat{h}(z) \int_0^z \frac{\hat{q}(z)/z}{\hat{h}(z)}{dz}
+\end{equation*}
+satisfies conditions 2 and 4.
+
+
+\subsection{series evaluation}
+
+For large enough $\tau$, the solution takes the form
+\begin{equation*}
+f(z) = \sum_{i=0}^{\infty} \sum_{j=0}^{\tau-1} u_{i,j} z^{\lambda+i} \frac{\log(z)^j}{j!}\text{,}
+\end{equation*}
+and the coefficients $u_{i,j}$ satsify $u_{i_,j} = 0$ for $j \ge \tau$. Therefore, write $u_i = \sum_{j=0}^{\tau-1} u_{i,j} \Lambda^{\tau-1-j}$ where \emph{everything is modulo $\Lambda^\tau$}.
+Eventually the coefficients $u_{i}$ satisfy a relation of the form
+\begin{equation}
+\label{unrec}
+u_n = a_1 u_{n-1} + \cdots + a_s u_{n-s}\text{,} \quad a_i \in \mathbb{F}(n)[\Lambda]
+\end{equation}
+Let $M_n \in \mathbb{F}(n)[\Lambda] ^{s \times s}$ be the companion matrix (with the $a_i$ on the first row) such that
+\begin{equation*}
+\left(\begin{array}{c}
+u_n\\
+\vdots \\
+u_{n-(s-1)}
+\end{array}\right)
+=M_n
+\left(\begin{array}{c}
+u_{n-1}\\
+\vdots \\
+u_{n-s}
+\end{array}\right)
+\end{equation*}
+Set $f_{[N_0,N_1)}(z) = \sum_{i=N_0}^{N_1-1} z^{\lambda+i} u_i(\log(z))$ where $u_i(\log(z))$ denotes $u_i \in \mathbb{F}[\Lambda]$ with $\Lambda^{\tau-1-j}$ replaced by $\log(z)^j/j!$.
+For the derivative $f^{(d)}(z)$ of order $d$ we have
+\begin{equation*}
+\left(\begin{array}{c}
+f_{[N_0,N_1)}^{(d)}(z) \\
+? \\
+\vdots
+\end{array}\right) = \sum_{i=N_0}^{N_1-1} z^{\lambda+i-d} (\Lambda+\lambda+i)^{(d)}\prod_{i\ge \ell \ge N_0}M_{\ell}
+\left(\begin{array}{c}
+u_{N_0-1}\\
+\vdots \\
+u_{N_0-s}
+\end{array}\right) (\log(z))\end{equation*}
+where $x^{(d)} := x(x-1)\cdots(x-(d-1))$ on the right hand side denotes the falling factorial. Therefore, to evaluate several derivatives of $f$, it suffices to take the first entry of the right hand side for several values of $d$, where the products $\prod_{N_0\le \ell < i}M_{\ell}$ can be reused. Furthermore, the final product $\prod_{N_0\le \ell < N_1}M(\ell)$, when multiplied by the initial values $u_{N_0-1}, \dots u_{N_0-s}$, gives the final $u_{N_1-1}, \dots, u_{N_1-s}$, which are needed for the estimation of the tail $\sum_{i=N_1}^{\infty} z^i u_i(\log(z))$.
+
+To avoid either a catastrophic linear loss of precision when the $a_i$ are approximate quantities or a slow algorithm when the $a_i$ are ``small'' exact quantities, the above sum should be evaluated via binary splitting: that is, for example
+\begin{align*}
+\sum_{i=0}^{7} z^{i} \prod_{i\ge \ell \ge 0}M_{\ell} &= (M_0 + z M_1 M_0 + z^2(M_2 + z M_3 M_2) M_1 M_0)\\
+& \quad + z^4 (M_4 + z M_5 M_4 + z^2(M_6 + z M_7 M_6) M_5 M_4)M_3 M_2 M_1 M_0\text{.}
+\end{align*}
+
+\subsection{putting everything together}
+This section discusses the reliable evaluation of the solution and its derivatives $f(z), f'(z), \dots, f^{(\delta-1)}(z)$, which can be writen as
+\begin{equation*}
+f^{(d)}(z) = f_{[0,N_0)}^{(d)}(z) + f_{[N_0,N)}^{(d)}(z) + f_{[N,\infty)}^{(d)}(z)
+\end{equation*}
+where 
+\begin{equation*}
+f_{[N_0,N_1)}(z) = \sum_{N_0 \le i < N_1,j} u_{i,j} z^{\lambda+i} \frac{\log(z)^j}{j!}
+\end{equation*}
+The the quantities $z^{\lambda+i} \log(z)^j/j!$ for integers $i$ and $j$ need to be evaluated reliably. This is a problem when $z$ is zero or a ball containing zero.
+
+The first block $f_{[0,N_0)}^{(d)}(z)$ includes those ``problematic'' terms $u_{i,j} z^{\lambda+i} \log(z)^j/j!$ where $\lambda+i$ is a root of $Q_0(\theta)$. These terms are problematic because the denominators of \eqref{unrec} could vanish, thus they should be dealt with separately. For each of these terms we just evaluate $z^{\lambda+i} \log(z)^j/j!$ directly and take care when $z$ contains zero, where the sign of $\Re(\lambda+i)$ is relevent.
+
+The next block also requires care with respect to the evaluation of $\log(z)$. What we actually get out of the previous section is a reliable evaluation of
+\begin{equation*}
+z^{d - N_0 - \lambda} f_{[N_0,N)}^{(d)}(z) = \sum_{j=0}^{\tau-1} e_j \Lambda^{\tau-1-j} \in \mathbb{C}[\Lambda]\text{,}
+\end{equation*}
+that is, we still have to evaluate $\sum_{j=0}^{\tau-1} e_j z^{\lambda+N_0-d}\log(z)^j/j!$ as reliably as possible. For this, it is helpful if $\Re(\lambda+N_0-d) > 0$ which is why it is a good ideal to at least choose an $N_0 \ge \delta$.
+
+For the final block, the majorant method produces a power series $\hat{B}(z) = \sum_{i=0}^{\infty} b_i z^i \in \mathbb{R}_{\ge 0}[z]$ with $z^N \hat{B}(z)$ majorizing the tail $\sum_{i = N}^{\infty} u_{i,j} z^i$ for all $j<\tau$. Thus to bound $|f(z)| + |f'(z)| \epsilon + \cdots + |f^{\delta-1}(z)|/(\delta-1)! \epsilon^{\delta-1}$, we need to calculate, while working in $\epsilon$ modulo $\epsilon^{\delta}$, a majorant (in $\epsilon$) of $(z+\epsilon)^{\lambda+N} \log(z+\epsilon)^j/j!$ for each $j<\tau$, add these up, and multiply the sum by $B(z+\epsilon)$. Since the derivatives of $z^\delta \log(z)^{j}$ up to and including order $\delta-1$ are continuous at $z=0$, it suffices to steal $z^\delta$ from the $z^{\lambda+N}$. If the deficit $z^{\lambda+N-\delta}$ is not continuous at $z=0$, the situation is hopeless anyways.
+For fixed $\delta$ we have
+\begin{equation*}
+(z+\epsilon)^\delta \log(z+\epsilon)^{j} = \sum_{k=0}^{\delta-1} c_{j,k}(\log(z)) z^{\delta-k} \epsilon^{k} + O(\epsilon^\delta)
+\end{equation*}
+for certain polynomials $c_{j,k}$ of degree $j$ satisfying $c_{j+1,k} = \log(z) c_{j,k} + \sum_{\ell=1}^{k} (-1)^{\ell-1}c_{k-\ell}/\ell$.
+
+\subsection{Tight ${}_2 F_1$ bounds everywhere}
+The analysis is for real parameters $a,b,c \in \mathbb{R}$, but it should be possible to do something for complex parameters too.
+
+With
+\begin{equation}
+f(w) = (1+w)^{-2 a} \, _2F_1\left(\begin{array}{c} a,b \\ c \end{array} \Big| \frac{4 w}{(1+w)^2}\right) = \sum_{n=0}^{\infty}r_n w^n, \quad |w| < 1
+\end{equation}
+we have $r_0=1$, $r_1=\frac{4ab}{c} - 2a$, and $r_{n+1} = \lambda_0(n) r_n + (1-\lambda_1(n)) r_{n-1}$, where
+\begin{align*}
+\lambda_0(n) &= \frac{2 (2 b-c) (n+a)}{(n+1) (n+c)}\\
+\lambda_1(n) &= \frac{2 (1-2 a+c) (n+a)}{(n+1) (n+c)}
+\end{align*}
+The unit disk $|w| < 1$ is mapped into the whole complex $z$-plane minus $[1,\infty)$ by $z=\frac{4w}{(1+w)^2}$, hence this provides a method for computing the usual branch of $\, _2F_1$ if we can bound the tails of the sum. Note that $\lambda_0, \lambda_1 \to 0$, and for the moment entertain the assumption that $|\lambda_0| \le \lambda_1 \le 1$ for all $n$:
+\begin{align*}
+|r_2| &= |\lambda_0 r_1 + (1 - \lambda_1) r_0| \\
+& \le |\lambda_0||r_1| + (1 - \lambda_1) |r_0| \\
+& \le  (|\lambda_0| + 1 - \lambda_1) \operatorname{max}(|r_0|, |r_1|) \\
+& \le \operatorname{max}(|r_0|, |r_1|)\text{.}
+\end{align*}
+Hence $|r_n| \le \operatorname{max}(|r_0|, |r_1|)$ for all $n$ by induction. For general real parameters $a, b, c$ the inequality $|\lambda_0(n)| \le \lambda_1(n)$ is not possible for all $n$ as singularities (either logarithmetic or algebraic) of the $\, _2F_1$ at $z=\infty$ and $z=1$ mean that the $r_n$ can grow like an arbitrarily large power of $n$.
+
+To remedy this, consider $\tilde{r}_n := r_n n^{-\mu}$ for some arbitrary real $\mu$. The transformed recurrence is $\tilde{r}_n = \tilde{\lambda}_0(n) \tilde{r}_{n-1} + (1 - \tilde{\lambda}_1(n)) \tilde{r}_{n-2}$ where
+\begin{align*}
+\tilde{\lambda}_0(n) &= \left(\frac{n}{n+1}\right)^{\mu} \lambda_0(n)\\
+\tilde{\lambda}_1(n) &= 1 - \left(\frac{n-1}{n+1}\right)^{\mu} (1-\lambda_1(n))
+\end{align*}
+If $|\tilde{\lambda}_0(n)| \le \tilde{\lambda}_1(n) \le 1$ for all $n \ge n_0$, then it follows as above that $r_n \le \max(|\tilde{r}_{n_0}|, |\tilde{r}_{n_0-1}|) n^{\mu}$ for all $n > n_0$. There are two ways to turn this into an algorithm for bounding the tails. Either choose an $n_0$ and compute a $\mu$ (not recommended), or since
+\begin{align*}
+\tilde{\lambda}_0(n) &= 2 (2 b-c) n^{-1}+O\left(n^{-2}\right)\\
+\tilde{\lambda}_1(n) &= 2 (1-2 a+c+\mu) n^{-1} + O\left(n^{-2}\right)
+\end{align*}
+we can choose any $\mu >-1 + 2 a - c + |2 b-c|$ and compute an $n_0$. This is an optimal bound on $\mu$.
+
+\subsection{${}_2 F_0$ and resummation bounds}
+The calculation of ${}_2 F_0$ follows the process in Section \ref{section_negd}. With $\hat{f}(\xi) = \sum_{n=0}^{\infty} \frac{(a)_n (b)_n}{n!^2} \xi^n$, the function $F(x) = \ee^{\omega x} \int_0^x \ee^{-\omega t} \hat{F}(z \omega t) dt$ is annihilated by ($\theta := x \partial_x$)
+\begin{equation*}
+(\theta -1)^2 \theta - w (\theta -1)(z (\theta -2+a)
+   (\theta -2+b)+\theta -1) x + w^2 z (\theta -2+a) (\theta -2+b) x^2
+\end{equation*}
+and for any $x_0$ with $x_0 \left(1-w x_0 z\right)\neq 0$ the function $\tilde{F}(x) = F(x+x_0)$ is annihilated by
+\begin{gather*}
+x_0 \left(1-w x_0 z\right)\theta (\theta -1)(\theta -2)\,+\\
+(\theta-1) (\theta-2) \left(\theta  \left(1-2 w x_0 z\right)-w x_0 (z (a+b-5)+1)+w^2 x_0^2 z-2\right)x \,+\\
+w (\theta -2)
+   \left(-z \theta ^2+\left(-z(a+b-6)+2 w x_0 z-1\right)\theta+w x_0 z (a+b-5)-(a-3)
+   (b-3) z+2\right) x^2\,+\\
+w^2 z (\theta-3+a) (\theta-3+b) x^3
+\end{gather*}
+
+In general, given $\hat{f}(\xi)$ we would like to compute $\lim_{x \to \infty} \omega \ee^{-\omega x}F(x)$ where
+\begin{gather*}
+F(x) := \ee^{\omega x} \int_0^x \ee^{-\omega t} \hat{f}(z (\omega t)^d) dt\text{,}\\
+F'(x) - w F(x) = \hat{f}(z (\omega x)^d)\text{.}
+\end{gather*}
+Initial conditions for $\hat{f}(\xi)$ at $\xi=0$ easily translate to initial condition for $F(x)$ at $x=0$ when combined with $F(0) = 0$. Next, we integrate these initial conditions from $0$ to some $x_0$ to produce $F(x_0), F'(x_0), \dots F^{(r+1)}(x_0)$ for some $r$. Finally, we need to estimate the tail $\int_{x_0}^{\infty} \ee^{-\omega t} \delta(t) dt$ where $\delta(x) = F'(x) - w F(x)$. Bounding the coefficients of the differential equation for $\delta$ gives a crude bound of the form $|\delta(x)| < \ee^{\lambda (x-x_0)} || \langle \delta(x_0), \delta'(x_0), \dots, \delta^{(r)}(x_0) \rangle ||$ for $x>x_0$. If $\lambda < \Re \omega$, then we are done.
+
+
+\subsection{Tight ${}_3 F_2$ bounds near $1$}
+
+Series expansions of solutions around $z=1$ can be constructed as
+\begin{equation*}
+\sum_{n=0}^{\infty} r_n (1-z)^{n+\lambda}
+\end{equation*}
+where $\lambda =0$ or $\lambda = b_1+b_2-a_1-a_2-a_3$ and $r_{n+2} + \kappa_1(n) r_{n+1} + \kappa_0(n) r_n = 0$ where
+\begin{align*}
+\kappa_0(n) &= \frac{\left(a_1+\lambda +n\right) \left(a_2+\lambda
+   +n\right) \left(a_3+\lambda +n\right)}{(\lambda +n+1)
+   (\lambda +n+2) \left(a_1+a_2+a_3-b_1-b_2+\lambda
+   +n+2\right)}\\
+&=1 + \left(b_1+b_2-5 \right) n^{-1} + O(n^{-2})\\
+\kappa_1(n) &=-2 - \left(b_1+b_2-5 \right) n^{-1} + O(n^{-2})
+\end{align*}
+For $\lambda = b_1+b_2-a_1-a_2-a_3$ the $r_n$ are determined once $r_0$ is fixed, while for $\lambda = 0$, the $r_n$ depend freely on $r_0$ and $r_1$. This gives $3$ solutions.
+
+By the substitution $r_n = \tilde{r}_n n^\mu$ where $\mu = -2 + \operatorname{max}(b_1,b_2)$, this equation can be brought to the form
+\begin{equation*}
+\tilde{r}_{n+2} + \left(-2 + \frac{d_1}{n} + \frac{d_2}{n^2} + O(\frac{1}{n^3}) \right) \tilde{r}_{n+1} + \left(1 - \frac{d_1}{n} - \frac{d_2}{n^2} + O(\frac{1}{n^3}) \right) \tilde{r}_{n} = 0
+\end{equation*}
+where crutially $d_1 = 1 + |b_1-b_2|$ is positive. This equation can be rewritten as
+\begin{equation*}
+\tilde{r}_{n+2} - \tilde{r}_{n+1} = \left(1 - \frac{d_1}{n} - \frac{d_2}{n^2} \right) (\tilde{r}_{n+1} - \tilde{r}_{n}) + O(\frac{\operatorname{max}(|\tilde{r}_{n+1}|, |\tilde{r}_{n}|)}{n^3})
+\end{equation*}
+All constants hidden by the O notation are effective and depend only on the parameters $b_i,a_i$. We would like to show that $\tilde{r}_{n} = O(n^{\epsilon})$ for every $\epsilon > 0$.
+
+
+
+\end{document}
+
+
+\section{Sums of squares}
+The usual formula $r_2(n) = 4\sum_{d|n} \chi(d)$ for the number of representations by $x^2+y^2$ follows from
+\begin{equation*}
+\sum_{x,y \in \mathbb{Z}} q^{x^2+y^2} = 1+4\sum_{k=0}^{\infty} (-1)^k \frac{q^{2k+1}}{1-q^{2k+1}}
+\end{equation*}
+(just expand $\frac{q^k}{1-q^k} = \sum_{d} q^{d k}$). For the sum of two odd squares we have
+\begin{align*}
+\sum_{x,y \in \mathbb{Z}} q^{(2x+1)^2+(2y+1)^2} &= 4\sum_{k=0}^{\infty} (-1)^k \left(\frac{q^{4k+2}}{1-q^{4k+2}} - \frac{q^{8k+4}}{1-q^{8k+4}} \right)\\
+& =\sum_{x,y \in \mathbb{Z}} q^{2(x^2+y^2)} - \sum_{x,y \in \mathbb{Z}} q^{4(x^2+y^2)}
+\end{align*}
+that is, the number of representations of $n$ as the sum of two odd squares is $r_2(n/2) - r_2(n/4)$ (with $r_2$ taking the value $0$ for non-integer argument).
