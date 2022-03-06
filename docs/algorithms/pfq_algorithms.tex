@@ -7,12 +7,12 @@
 \addtolength{\textheight}{2.0in}
 \addtolength{\voffset}{-1.0in}
 
-\usepackage{bbm}
-\newcommand{\ee}[0] {\mathrm{e}}
-\newcommand{\ii}[0] {\mathrm{i}}
+%\usepackage{bbm}
+%\newcommand{\ee}[0] {\mathbbm{e}}
+%\newcommand{\ii}[0] {\mathbbm{i}}
 
-%\newcommand{\ee}[0] {e}
-%\newcommand{\ii}[0] {i}
+\newcommand{\ee}[0] {e}
+\newcommand{\ii}[0] {i}
 
 
 \numberwithin{equation}{section}
@@ -47,8 +47,9 @@
 \begin{document}
 \maketitle
 
-\abstract{The generalized hypergeometric function $\FFf{p}{F}{q}{\bfa; \bfb}{z}$ is susceptible to various numerical evaluation techniques. Here we attempt to give effective strategies for unrestricted $z$ while restricting the parameters so that $||\bfa||+||\bfb||$ does not exceed the roughly the working bit precision. The problem of large parameters is \emph{not} considered, and the techiniques considered are rigorous, that is, they produce a proven enclosure of the value of the function.}
-
+\abstract{The generalized hypergeometric function $\FFf{p}{F}{q}{\bfa; \bfb}{z}$ is susceptible to various numerical evaluation techniques. Here we attempt to give effective evaluation strategies for unrestricted $z$ when the parameters $\bfa, \bfb$ are not too big. The techiniques considered are rigorous, that is, they produce a proven enclosure of the value of the function. Our techniques work well when the $\max(||\bfa||,||\bfb||)$ does not exceed the roughly the logarithm of the working bit precision. 
+%The problem of large parameters is \emph{not} considered.
+ }
 \section{Definitions}
 For $\mathbf{a}=a_1,\dots,a_p$ and  $\mathbf{b}=b_1,\dots,b_q$, set $(a)_n := \Gamma(a+n)/\Gamma(a)$ and $(\mathbf{a})_n := \prod_i (a_i)_n$ and define
 \begin{equation}
@@ -347,7 +348,7 @@ We have $\FFf{0}{U}{2}{\tfrac{1}{3},\tfrac{2}{3}}{z}=1$ and the following approx
 \end{cases}\text{,} \quad x > 0.
 \end{equation*}
 \begin{center}
-\includegraphics[width=400pt]{pfq_im}
+\includegraphics[width=400pt]{im}
 \end{center}
 \end{remark}
 
@@ -480,7 +481,7 @@ These identities follow by observing that the right hand parenthesized sums are 
 \end{equation*}
 The asymptotic value of the integral around all poles can be deduced by deforming the contour to an essentially vertical one passing through the saddle point near $s=-z^{1/d}$ and tending to $\pm i \infty$ along the path of steepest descent. The equality holds due to the uniqueness of the minimal solution.
 
-Now, since the $F_{\beta}(z)$ are either entire or have simple prefactors as $z$ makes one trip around the origin, it is a simple matter to transform these minimal solutions back to an arbitrary $f_{\zeta}(z)$ by moving $z$ around the origin a few times in either direction and using the $\mathbb{C}_{+}$ and $\mathbb{C}_{-}$ gluings in point 5. This gives \eqref{fzeta} and these $d$ expansions along with the $p$ expansions in \eqref{algasymp} give a $(d+p)\times(d+p)$ matrix whose inverse has first row
+Now, since the $F_{\beta}(z)$ are either entire or have simple prefactors as $z$ makes one trip around the origin, it is a simple matter to transform these minimal solutions back to an arbitrary $f_{\zeta}(z)$ by moving $z$ around the origin a few times in either direction and using the $\mathbb{C}_{+}$ and $\mathbb{C}_{-}$ gluings in point 5. This gives \eqref{fzeta} and these $d$ expansions along with the $p$ expansions in \eqref{algasymp} give a $(d+p)\times(d+p)$ matrix whose inverse has first row \footnote{The coefficients may also be obtained with the partial fraction approach of ``The Asymptotic Expansion of the Meijer G-Function'' by J. L. Fields.}
 \begin{equation}
 \label{entirerecp2}
 \begin{alignedat}{1}
@@ -931,19 +932,4 @@ where crutially $d_1 = 1 + |b_1-b_2|$ is positive. This equation can be rewritte
 \end{equation*}
 All constants hidden by the O notation are effective and depend only on the parameters $b_i,a_i$. We would like to show that $\tilde{r}_{n} = O(n^{\epsilon})$ for every $\epsilon > 0$.
 
-
-
 \end{document}
-
-
-\section{Sums of squares}
-The usual formula $r_2(n) = 4\sum_{d|n} \chi(d)$ for the number of representations by $x^2+y^2$ follows from
-\begin{equation*}
-\sum_{x,y \in \mathbb{Z}} q^{x^2+y^2} = 1+4\sum_{k=0}^{\infty} (-1)^k \frac{q^{2k+1}}{1-q^{2k+1}}
-\end{equation*}
-(just expand $\frac{q^k}{1-q^k} = \sum_{d} q^{d k}$). For the sum of two odd squares we have
-\begin{align*}
-\sum_{x,y \in \mathbb{Z}} q^{(2x+1)^2+(2y+1)^2} &= 4\sum_{k=0}^{\infty} (-1)^k \left(\frac{q^{4k+2}}{1-q^{4k+2}} - \frac{q^{8k+4}}{1-q^{8k+4}} \right)\\
-& =\sum_{x,y \in \mathbb{Z}} q^{2(x^2+y^2)} - \sum_{x,y \in \mathbb{Z}} q^{4(x^2+y^2)}
-\end{align*}
-that is, the number of representations of $n$ as the sum of two odd squares is $r_2(n/2) - r_2(n/4)$ (with $r_2$ taking the value $0$ for non-integer argument).
