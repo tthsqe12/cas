@@ -2,10 +2,9 @@
 #define LG_BLK_SZ 8
 #define BLK_SHIFT 10
 
-class fftv2_ctx {
-public:
-    std::vector<double> data;
+struct fftv2_ctx {
     std::vector<std::vector<double>> wtab;
+    double * data;
     const double * w2s;
     double p;
     double pinv;
@@ -15,6 +14,18 @@ public:
     ulong blk_sz;
 
     fftv2_ctx(ulong pp)
+    {
+        blk_sz = BLK_SZ;
+        w2s = nullptr;
+        data = nullptr;
+        p = pp;
+        pinv = 1.0/p;
+        nmod_init(&mod, pp);
+        primitive_root = n_primitive_root_prime(pp);
+        wtab.clear();
+    }
+
+    void set_prime(ulong pp)
     {
         blk_sz = BLK_SZ;
         w2s = nullptr;
@@ -35,6 +46,8 @@ public:
             ulong tabsize = (l == 0) ? n : n/2;
             std::vector<double> tab(tabsize);
 
+std::cout << "filling depth " << l << " for prime " << format_hex(mod.n) << std::endl;
+
             ulong w = nmod_pow_ui(primitive_root, (mod.n - 1)>>l, mod);
             ulong wi = 1;
             double half_p = mul(p, 0.5);
@@ -52,25 +65,42 @@ public:
 
     inline ulong offset(ulong I)
     {
-        return (I << LG_BLK_SZ);// + (I >> BLK_SHIFT);
+        return (I << LG_BLK_SZ) + (I >> BLK_SHIFT);
+    }
+
+    ulong data_size()
+    {
+        return offset(ulong(1) << (depth - LG_BLK_SZ));
+    }
+
+    void set_data(double* d)
+    {
+        assert(data == nullptr);
+        data = d;
+    }
+    double* release_data()
+    {
+        double* d = data;
+        data = nullptr;
+        return d;
     }
 
     void set_depth(ulong l)
     {
+        assert(data == nullptr);
         depth = l;
         if (l < LG_BLK_SZ)
         {
-            std::cout << "depth too large" << std::endl;
+            std::cout << "depth " << l << " too small" << std::endl;
             abort();
         }
-        data.resize(offset(ulong(1) << (l - LG_BLK_SZ)));
         fit_wtab(l);
         w2s = wtab[l].data();
     }
 
     inline double* from_index(ulong I)
     {
-        return data.data() + offset(I);
+        return data + offset(I);
     }
 
     inline void set_index(ulong i, double x)
@@ -116,6 +146,10 @@ public:
     void transform_reverse_column(ulong k, ulong j, ulong I, ulong S);
     void transform_reverse() {transform_reverse(depth - LG_BLK_SZ, 0, 0, 1);}
     template <int> inline void transform_reverse_basecase(double *X, ulong j);
+
+
+    void from_mpn(const ulong * a, ulong an, ulong bits);
+    void point_mul(const double* b, ulong mm);
 };
 
 ulong saturate_bits(ulong a)
@@ -136,7 +170,7 @@ ulong saturate_bits(ulong a)
 /* radix 2 *******************************************************************/
 
 #define RADIX_2_FORWARD_PARAM(j) \
-    double W = w2s[j]; \
+    double w = w2s[j]; \
     double n = p; \
     double ninv = pinv;
 
@@ -145,29 +179,30 @@ ulong saturate_bits(ulong a)
     double _x0, _x1, _y0, _y1; \
     _x0 = *(X0); \
     _x1 = *(X1); \
-    _x1 = mulmod2(_x1, W, n, ninv); \
-    _y0 = reduce_pm2n_to_pm1n(add(_x0, _x1), n); \
-    _y1 = reduce_pm2n_to_pm1n(sub(_x0, _x1), n); \
+    _x0 = reduce_to_pm1n(_x0, n, ninv); \
+    _x1 = mulmod2(_x1, w, n, ninv); \
+    _y0 = add(_x0, _x1); \
+    _y1 = sub(_x0, _x1); \
     *(X0) = _y0; \
     *(X1) = _y1; \
 }
 
 #define PD_RADIX_2_FORWARD_PARAM(j) \
-    PD<4> W(w2s[j]); \
-    PD<4> n(p); \
-    PD<4> ninv(pinv);
+    PD<4> w = w2s[j]; \
+    PD<4> n = p; \
+    PD<4> ninv = pinv;
 
 #define PD_RADIX_2_FORWARD_2X(X0, X1, Z0, Z1) \
 { \
     PD<4> _x0, _x1, _y0, _y1, _z0, _z1, _w0, _w1; \
     _x0.load(X0); \
         _z0.load(Z0); \
-    _x0 = reduce_pm2n_to_pm1n(_x0, n); \
-        _z0 = reduce_pm2n_to_pm1n(_z0, n); \
+    _x0 = reduce_to_pm1n(_x0, n, ninv); \
+        _z0 = reduce_to_pm1n(_z0, n, ninv); \
     _x1.load(X1); \
         _z1.load(Z1); \
-    _x1 = mulmod2(_x1, W, n, ninv); \
-        _z1 = mulmod2(_z1, W, n, ninv); \
+    _x1 = mulmod2(_x1, w, n, ninv); \
+        _z1 = mulmod2(_z1, w, n, ninv); \
     _y0 = add(_x0, _x1); \
         _w0 = add(_z0, _z1); \
     _y1 = sub(_x0, _x1); \
@@ -242,26 +277,34 @@ forward butterfly:
 #define RADIX_4_FORWARD_PARAM(j) \
     double w = w2s[2*j]; \
     double w2 = w2s[1*j]; \
-    double iw = w2s[2*j+1];
+    double iw = w2s[2*j+1]; \
+    double n = p; \
+    double ninv = pinv;
 
 #define RADIX_4_FORWARD(X0, X1, X2, X3) \
 { \
-    double _x0 = X0; \
-    double _x1 = X1; \
-    double _x2 = X2; \
-    double _x3 = X3; \
-    double _y0 = add(_x0, mulmod2(_x2, w2, p, pinv)); \
-    double _y1 = add(_x1, mulmod2(_x3, w2, p, pinv)); \
-    double _y2 = sub(_x0, mulmod2(_x2, w2, p, pinv)); \
-    double _y3 = sub(_x1, mulmod2(_x3, w2, p, pinv)); \
-    _y0 = reduce_pm2n_to_pm1n(_y0, p); \
-    _y2 = reduce_pm2n_to_pm1n(_y2, p); \
-    _y1 = mulmod2(_y1, w, p, pinv); \
-    _y3 = mulmod2(_y3, iw, p, pinv); \
-    X0 = reduce_pm2n_to_pm1n(add(_y0, _y1), p); \
-    X1 = reduce_pm2n_to_pm1n(sub(_y0, _y1), p); \
-    X2 = reduce_pm2n_to_pm1n(add(_y2, _y3), p); \
-    X3 = reduce_pm2n_to_pm1n(sub(_y2, _y3), p); \
+    double _x0, _x1, _x2, _x3, _y0, _y1, _y2, _y3; \
+    _x0 = *(X0); \
+    _x0 = reduce_to_pm1n(_x0, n, ninv); \
+    _x1 = *(X1); \
+    _x2 = *(X2); \
+    _x3 = *(X3); \
+    _x2 = mulmod2(_x2, w2, n, ninv); \
+    _x3 = mulmod2(_x3, w2, n, ninv); \
+    _y0 = add(_x0, _x2); \
+    _y1 = add(_x1, _x3); \
+    _y2 = sub(_x0, _x2); \
+    _y3 = sub(_x1, _x3); \
+    _y1 = mulmod2(_y1, w, n, ninv); \
+    _y3 = mulmod2(_y3, iw, n, ninv); \
+    _x0 = add(_y0, _y1); \
+    _x1 = sub(_y0, _y1); \
+    _x2 = add(_y2, _y3); \
+    _x3 = sub(_y2, _y3); \
+    *(X0) = _x0; \
+    *(X1) = _x1; \
+    *(X2) = _x2; \
+    *(X3) = _x3; \
 }
 
 #define PD_RADIX_4_FORWARD_PARAM(j) \
@@ -590,6 +633,11 @@ inline void fftv2_ctx::transform_forward_basecase<0>(double* X, ulong j)
 }
 
 template <>
+inline void fftv2_ctx::transform_reverse_basecase<0>(double* X, ulong j)
+{
+}
+
+template <>
 inline void fftv2_ctx::transform_forward_basecase<1>(double* X, ulong j)
 {
     RADIX_2_FORWARD_PARAM(j)
@@ -606,10 +654,8 @@ inline void fftv2_ctx::transform_reverse_basecase<1>(double* X, ulong j)
 template <>
 inline void fftv2_ctx::transform_forward_basecase<2>(double* X, ulong j)
 {
-    double w = w2s[2*j];
-    double w2 = w2s[1*j];
-    double iw = w2s[2*j+1];
-    RADIX_4_FORWARD(X[0], X[1], X[2], X[3]);
+    RADIX_4_FORWARD_PARAM(j)
+    RADIX_4_FORWARD(X+0, X+1, X+2, X+3);
 }
 
 template <>
@@ -624,19 +670,19 @@ inline void fftv2_ctx::transform_forward_basecase<4>(double* X, ulong j)
 {
     PD_RADIX_4_FORWARD_PARAM(j)
     PD_RADIX_4_FORWARD(X+4*0, X+4*1, X+4*2, X+4*3);
-    transform_forward_basecase<2>(X + 4*0, 4*j+0);
-    transform_forward_basecase<2>(X + 4*1, 4*j+1);
-    transform_forward_basecase<2>(X + 4*2, 4*j+2);
-    transform_forward_basecase<2>(X + 4*3, 4*j+3);
+    transform_forward_basecase<2>(X+4*0, 4*j+0);
+    transform_forward_basecase<2>(X+4*1, 4*j+1);
+    transform_forward_basecase<2>(X+4*2, 4*j+2);
+    transform_forward_basecase<2>(X+4*3, 4*j+3);
 }
 
 template <>
 inline void fftv2_ctx::transform_reverse_basecase<4>(double* X, ulong j)
 {
-    transform_reverse_basecase<2>(X + 4*0, 4*j+0);
-    transform_reverse_basecase<2>(X + 4*1, 4*j+1);
-    transform_reverse_basecase<2>(X + 4*2, 4*j+2);
-    transform_reverse_basecase<2>(X + 4*3, 4*j+3);
+    transform_reverse_basecase<2>(X+4*0, 4*j+0);
+    transform_reverse_basecase<2>(X+4*1, 4*j+1);
+    transform_reverse_basecase<2>(X+4*2, 4*j+2);
+    transform_reverse_basecase<2>(X+4*3, 4*j+3);
     PD_RADIX_4_REVERSE_PARAM(j)
     PD_RADIX_4_REVERSE(X+4*0, X+4*1, X+4*2, X+4*3);
 }
@@ -644,28 +690,22 @@ inline void fftv2_ctx::transform_reverse_basecase<4>(double* X, ulong j)
 template <>
 inline void fftv2_ctx::transform_forward_basecase<6>(double* X, ulong j)
 {
-#if LG_BLK_SZ > 4
     PD_RADIX_4_FORWARD_PARAM(j)
     for (ulong i = 0; i < 16; i += 8)
         PD_RADIX_4_FORWARD_2X(X+i+16*0, X+i+16*1, X+i+16*2, X+i+16*3, X+i+16*0+4, X+i+16*1+4, X+i+16*2+4, X+i+16*3+4);
-#else
-    RADIX_4_FORWARD_PARAM(j)
-    for (ulong i = 0; i < 16; i += 1)
-        RADIX_4_FORWARD(X+i+16*0, X+i+16*1, X+i+16*2, X+i+16*3);
-#endif
-    transform_forward_basecase<4>(X + 16*0, 4*j+0);
-    transform_forward_basecase<4>(X + 16*1, 4*j+1);
-    transform_forward_basecase<4>(X + 16*2, 4*j+2);
-    transform_forward_basecase<4>(X + 16*3, 4*j+3);
+    transform_forward_basecase<4>(X+16*0, 4*j+0);
+    transform_forward_basecase<4>(X+16*1, 4*j+1);
+    transform_forward_basecase<4>(X+16*2, 4*j+2);
+    transform_forward_basecase<4>(X+16*3, 4*j+3);
 }
 
 template <>
 inline void fftv2_ctx::transform_reverse_basecase<6>(double* X, ulong j)
 {
-    transform_reverse_basecase<4>(X + 16*0, 4*j+0);
-    transform_reverse_basecase<4>(X + 16*1, 4*j+1);
-    transform_reverse_basecase<4>(X + 16*2, 4*j+2);
-    transform_reverse_basecase<4>(X + 16*3, 4*j+3);
+    transform_reverse_basecase<4>(X+16*0, 4*j+0);
+    transform_reverse_basecase<4>(X+16*1, 4*j+1);
+    transform_reverse_basecase<4>(X+16*2, 4*j+2);
+    transform_reverse_basecase<4>(X+16*3, 4*j+3);
     PD_RADIX_4_REVERSE_PARAM(j)
     for (ulong i = 0; i < 16; i += 8)
         PD_RADIX_4_REVERSE_2X(X+i+16*0, X+i+16*1, X+i+16*2, X+i+16*3, X+i+16*0+4, X+i+16*1+4, X+i+16*2+4, X+i+16*3+4);
@@ -674,26 +714,22 @@ inline void fftv2_ctx::transform_reverse_basecase<6>(double* X, ulong j)
 template <>
 void fftv2_ctx::transform_forward_basecase<8>(double* X, ulong j)
 {
-    PD<4> w = w2s[2*j];
-    PD<4> w2 = w2s[1*j];
-    PD<4> iw = w2s[2*j+1];
-    PD<4> n(p);
-    PD<4> ninv(pinv);
+    PD_RADIX_4_FORWARD_PARAM(j)
     for (ulong i = 0; i < 64; i += 8)
         PD_RADIX_4_FORWARD_2X(X+i+64*0, X+i+64*1, X+i+64*2, X+i+64*3, X+i+64*0+4, X+i+64*1+4, X+i+64*2+4, X+i+64*3+4);
-    transform_forward_basecase<6>(X + 64*0, 4*j+0);
-    transform_forward_basecase<6>(X + 64*1, 4*j+1);
-    transform_forward_basecase<6>(X + 64*2, 4*j+2);
-    transform_forward_basecase<6>(X + 64*3, 4*j+3);
+    transform_forward_basecase<6>(X+64*0, 4*j+0);
+    transform_forward_basecase<6>(X+64*1, 4*j+1);
+    transform_forward_basecase<6>(X+64*2, 4*j+2);
+    transform_forward_basecase<6>(X+64*3, 4*j+3);
 }
 
 template <>
 void fftv2_ctx::transform_reverse_basecase<8>(double* X, ulong j)
 {
-    transform_reverse_basecase<6>(X + 64*0, 4*j+0);
-    transform_reverse_basecase<6>(X + 64*1, 4*j+1);
-    transform_reverse_basecase<6>(X + 64*2, 4*j+2);
-    transform_reverse_basecase<6>(X + 64*3, 4*j+3);
+    transform_reverse_basecase<6>(X+64*0, 4*j+0);
+    transform_reverse_basecase<6>(X+64*1, 4*j+1);
+    transform_reverse_basecase<6>(X+64*2, 4*j+2);
+    transform_reverse_basecase<6>(X+64*3, 4*j+3);
     PD_RADIX_4_REVERSE_PARAM(j)
     for (ulong i = 0; i < 64; i += 8)
         PD_RADIX_4_REVERSE_2X(X+i+64*0, X+i+64*1, X+i+64*2, X+i+64*3, X+i+64*0+4, X+i+64*1+4, X+i+64*2+4, X+i+64*3+4);
@@ -784,36 +820,650 @@ void fftv2_ctx::transform_reverse(
     }
 }
 
+ulong cld(ulong a, ulong b)
+{
+    return (a + b - 1)/b;
+}
+
+ulong clog2(ulong x)
+{
+    if (x <= 2)
+        return x == 2;
+    return FLINT_BITS - __builtin_clzll(x - 1);
+}
+
+ulong next_fft_number(ulong p)
+{
+    ulong bits = FLINT_BIT_COUNT(p);
+    ulong l; count_trailing_zeros(l, p - 1);
+    ulong q = p - (UWORD(2) << l);
+    if (bits < 20)
+        std::abort();
+    if (FLINT_BIT_COUNT(q) == bits)
+        return q;
+    if (l < 5)
+        return (UWORD(1) << (bits - 2)) + 1;
+    return (UWORD(1) << (bits)) - (UWORD(1) << (l - 1)) + 1;   
+}
+
+
+void fftv2_ctx::from_mpn(
+    const ulong * a,
+    ulong an,
+    ulong bits)
+{
+    if ((bits % FLINT_BITS) != 0)
+    {
+        std::cout << "from_mpn: bad bits" << std::endl;
+        abort();
+    }
+
+    ulong xn = UWORD(1) << depth;
+    for (ulong i = 0; i < xn; i++)
+    {
+        ulong tbits = i*bits;
+        ulong toff = tbits/FLINT_BITS;
+        ulong tshift = tbits%FLINT_BITS;
+
+        if (tshift == 0)
+        {
+            ulong r = 0;
+            if (toff + bits/FLINT_BITS < an)
+                r = mpn_mod_1(a + toff, bits/FLINT_BITS, mod.n);
+            else if (toff < an)
+                r = mpn_mod_1(a + toff, FLINT_MIN(bits/FLINT_BITS, an - toff), mod.n);
+            double rr = r;
+            if (mod.n - r < r)
+                rr -= p;
+
+if (i < 0)
+std::cout << "r[" <<  i << "]: " << rr << std::endl;
+
+            set_index(i, rr);
+        }
+        else
+        {
+            std::cout << "from_mpn: tshift" << std::endl;
+            abort();
+        }
+    }
+}
+
+// pointwise mul of self with b and m
+void fftv2_ctx::point_mul(const double* b, ulong mm)
+{
+    double m = mm;
+    if (m > 0.5*p)
+        m -= p;
+
+    for (ulong I = 0; I < ulong(1) << (depth - LG_BLK_SZ); I++)
+    {
+        double* x = from_index(I);
+        const double* bx = b + offset(I);
+        for (ulong j = 0; j < blk_sz; j++)
+        {
+            x[j] = mulmod2(x[j], bx[j], p, pinv);
+            x[j] = mulmod2(x[j], m, p, pinv);
+        }
+    }
+}
+
+
+struct crt_data {
+    ulong prime;
+    ulong coeff_len;
+    ulong nprimes;
+    std::vector<ulong> data;
+
+    crt_data(ulong _prime, ulong _coeff_len, ulong _nprimes)
+    {
+        prime = _prime;
+        coeff_len = _coeff_len;
+        nprimes = _nprimes;
+        data.resize(nprimes*coeff_len + coeff_len + nprimes);
+    }
+
+    // return mpn of length coeff_len
+    ulong* co_prime(ulong i) {
+        assert(i < nprimes);
+        return data.data() + i*coeff_len;
+    }
+
+    // return mpn of length coeff_len
+    ulong* prod_primes() {
+        return data.data() + nprimes*coeff_len;
+    }
+
+    // the reduction of co_prime(i)
+    ulong& co_prime_red(ulong i) {
+        assert(i < nprimes);
+        return data[nprimes*coeff_len + coeff_len + i];
+    }
+};
+
+
+struct mpn_ctx_v2 {
+    std::vector<fftv2_ctx> ffts;
+    std::vector<crt_data> crts;
+
+    ulong nprimes() {
+        return ffts.size();
+    }
+
+    mpn_ctx_v2(ulong p)
+    {
+        ffts.emplace_back(p);
+        crts.emplace_back(p, 1, 1);
+
+        crts[0].co_prime_red(0) = 1;
+        crts[0].co_prime(0)[0] = 1;
+        crts[0].prod_primes()[0] = p;
+    }
+
+    void add_prime(ulong p)
+    {
+        ffts.emplace_back(p);
+        ulong len = crts.back().coeff_len;
+        ulong* t = new ulong[len + 1];
+
+        t[len] = mpn_mul_1(t, crts.back().prod_primes(), len, p);
+        len += (t[len] != 0);
+
+        crts.emplace_back(p, len, nprimes());
+
+        // set product of primes
+        mpn_copyi(crts.back().prod_primes(), t, len);
+
+        // set cofactors
+        for (ulong i = 0; i < nprimes(); i++)
+        {
+            mpn_divexact_1(crts.back().co_prime(i), t, len, crts[i].prime);
+            crts.back().co_prime_red(i) = mpn_mod_1(crts.back().co_prime(i), len, crts[i].prime);
+        }
+
+        delete[] t;
+    }
+
+    void add_prime()
+    {
+        ulong p = ffts.back().mod.n;
+        do {
+            p = next_fft_number(p);
+        } while (!n_is_prime(p));
+        add_prime(p);
+    }
+};
+
+
+void mpn_mul_v2(
+    mpn_ctx_v2& Q,
+    ulong* z,
+    const ulong* a, ulong an,
+    const ulong* b, ulong bn)
+{
+    ulong zn = an + bn;
+    ulong bits = 64;
+    ulong alen = cld(FLINT_BITS * an, bits);
+    ulong blen = cld(FLINT_BITS * bn, bits);
+    alen = FLINT_MAX(1, alen);
+    alen = FLINT_MAX(1, alen);
+    ulong zlen = alen + blen - 1;
+    ulong depth = clog2(zlen);
+    depth = FLINT_MAX(depth, LG_BLK_SZ);
+    ulong np = 4;
+timeit_t timer;
+
+    while (Q.nprimes() < np)
+        Q.add_prime();
+
+    Q.ffts[0].set_depth(depth);
+    ulong zcoeff_len = Q.crts.back().coeff_len;
+
+    ulong* tt = new ulong[zcoeff_len + 1];
+    double* abuf = new double[Q.ffts[0].data_size()];
+    double* bbuf = new double[Q.ffts[0].data_size()];
+    ulong* zbuf = new ulong[zlen*zcoeff_len];
+
+
+std::cout << "depth: " << depth << std::endl;
+
+    for (ulong i = 0; i < np; i++)
+    {
+        fftv2_ctx& ctx = Q.ffts[i];
+//std::cout << "doing prime: " << ctx.p << std::endl;
+        ctx.set_depth(depth);
+
+        ctx.set_data(bbuf);
+timeit_start(timer);
+        ctx.from_mpn(b, bn, bits);
+timeit_stop(timer);
+std::cout << "b from mpn: " << timer->wall << std::endl;
+timeit_start(timer);
+        ctx.transform_forward();
+timeit_stop(timer);
+std::cout << " b forward: " << timer->wall << std::endl;
+        ctx.release_data();
+
+        ctx.set_data(abuf);
+timeit_start(timer);
+        ctx.from_mpn(a, an, bits);
+timeit_stop(timer);
+std::cout << "a from mpn: " << timer->wall << std::endl;
+timeit_start(timer);
+        ctx.transform_forward();
+timeit_stop(timer);
+std::cout << " a forward: " << timer->wall << std::endl;
+
+timeit_start(timer);
+        // bake in 2^-depth * (p2*p3*p4)^-1 mod p1
+        {
+            ulong t1, thi, tlo;
+            ulong cop = Q.crts[np - 1].co_prime_red(i);
+            thi = cop >> (FLINT_BITS - depth);
+            tlo = cop << (depth);
+            NMOD_RED2(t1, thi, tlo, ctx.mod);
+//            t1 = ulong(1) << depth;
+            ctx.point_mul(bbuf, nmod_inv(t1, ctx.mod));
+        }
+timeit_stop(timer);
+std::cout << " point mul: " << timer->wall << std::endl;
+
+timeit_start(timer);
+        ctx.transform_reverse();
+timeit_stop(timer);
+std::cout << "   reverse: " << timer->wall << std::endl;
+
+
+timeit_start(timer);
+        ulong* mult = Q.crts[np - 1].co_prime(i);
+        for (ulong j = 0; j < zlen; j++)
+        {
+            double x = ctx.get_index(j);
+            slong xx = reduce_to_pm1n(x, ctx.p, ctx.pinv);
+            ulong y;
+            if (xx < 0)
+                y = ctx.mod.n + xx;
+            else
+                y = xx;
+
+if (j < 0)
+{
+    std::cout << "y[" << j << "]: " << y << std::endl;
+}
+
+            if (i == 0)
+                mpn_mul_1(zbuf + j*zcoeff_len, mult, zcoeff_len, y);
+            else
+                mpn_addmul_1(zbuf + j*zcoeff_len, mult, zcoeff_len, y);
+        }
+
+timeit_stop(timer);
+std::cout << "       crt: " << timer->wall << std::endl;
+
+
+        ctx.release_data();
+    }
+
+timeit_start(timer);
+
+    mpn_zero(z, zn);
+
+    ulong * limit = Q.crts[np - 1].prod_primes();
+    for (ulong i = 0; i < zlen; i++)
+    {
+        ulong tbits = i*bits;
+        ulong* t = zbuf + i*zcoeff_len;
+        while (mpn_cmp(t, limit, zcoeff_len) >= 0)
+            mpn_sub_n(t, t, limit, zcoeff_len);
+
+        ulong toff = tbits/FLINT_BITS;
+        ulong tshift = tbits%FLINT_BITS;
+
+        if (toff >= zn)
+            break;
+/*
+std::cout << "i: " << i << ", toff: " << toff << ", tshift: " << tshift << ", adding length: " << FLINT_MIN(zcoeff_len, zn - toff) << "  ";
+std::cout << "t: " << format_hex(t[0]) << ", " <<
+                      format_hex(t[1]) << ", " <<
+                      format_hex(t[2]) << ", " <<
+                      format_hex(t[3]) << std::endl;
+*/
+
+        if (tshift == 0)
+        {
+            mpn_add_n(z + toff, z + toff, t, FLINT_MIN(zcoeff_len, zn - toff));
+//std::cout << "z[" << toff << "]: " << format_hex(z[toff]) << std::endl;
+        }
+        else
+        {
+            tt[zcoeff_len] = mpn_lshift(tt, t, zcoeff_len, tshift);
+            mpn_add_n(z + toff, z + toff, tt, FLINT_MIN(zcoeff_len + 1, zn - toff));
+        }
+    }
+
+timeit_stop(timer);
+std::cout << "     final: " << timer->wall << std::endl;
+
+
+    delete[] abuf;
+    delete[] bbuf;
+    delete[] zbuf;
+    delete[] tt;
+}
+
+
+void test_mpn_mul_v2(mpn_ctx_v2& Q, ulong an, ulong bn)
+{
+    ulong* a = new ulong[an];
+    ulong* b = new ulong[bn];
+    ulong* z1 = new ulong[an + bn];
+    ulong* z2 = new ulong[an + bn];
+    timeit_t timer;
+    ulong new_time, old_time;
+
+    for (ulong i = 0; i < an; i++)
+        a[i] = -UWORD(1);
+
+    for (ulong i = 0; i < bn; i++)
+        b[i] = -UWORD(1);
+
+timeit_start(timer);
+    if (an < bn)
+        mpn_mul(z1, b, bn, a, an);
+    else
+        mpn_mul(z1, a, an, b, bn);
+timeit_stop(timer);
+old_time = timer->wall;
+
+timeit_start(timer);
+    mpn_mul_v2(Q, z2, a, an, b, bn);
+timeit_stop(timer);
+new_time = timer->wall;
+
+if (old_time > 30)
+{
+    std::cout << "----------- " << an << " * " << bn << " words -------------" << std::endl;
+    std::cout << "old_time: " << old_time << std::endl;
+    std::cout << "new_time: " << new_time << std::endl;
+    std::cout << " old/new: " << double(old_time)/double(new_time) << std::endl;
+}
+
+
+    for (ulong i = 0; i < an + bn; i++)
+    {
+        if (z1[i] != z2[i])
+        {
+            std::cout << "mismatch!!!!" << std::endl;
+            std::cout << "an: " << an << ", bn: " << bn << std::endl;
+            std::cout << "z1[" << i << "]: " << format_hex(z1[i]) << std::endl;
+            std::cout << "z2[" << i << "]: " << format_hex(z2[i]) << std::endl;
+            abort();
+        }
+    }
+
+    delete[] a;
+    delete[] b;
+    delete[] z1;
+    delete[] z2;
+}
+
+
+void mpn_mul_v2(
+    ulong* z,
+    const ulong* a, ulong an,
+    const ulong* b, ulong bn)
+{
+    ulong zn = an + bn;
+    ulong bits = 64;
+    ulong alen = cld(FLINT_BITS * an, bits);
+    ulong blen = cld(FLINT_BITS * bn, bits);
+    alen = FLINT_MAX(1, alen);
+    alen = FLINT_MAX(1, alen);
+    ulong zlen = alen + blen - 1;
+    ulong depth = clog2(zlen);
+    depth = FLINT_MAX(depth, LG_BLK_SZ);
+
+    // crt data
+    int nprimes = 4;
+    // [nprimes]
+    ulong primes[4] = {UWORD(0x0003f00000000001),
+                       UWORD(0x0002580000000001),
+                       UWORD(0x00027c0000000001),
+                       UWORD(0x00033c0000000001)};
+
+    // supposed to hold 2*(product of primes)*(number of primes)
+    ulong zcoeff_len = 4;
+
+    // [nprimes][zcoeff_len]
+    ulong co_primes[4*4] = {
+        UWORD(0x0008100000000001), UWORD(0x8000001570500000), UWORD(0x000000000012d53d), UWORD(0x0000000000000000),
+        UWORD(0x0009a80000000001), UWORD(0x0000001e8d900000), UWORD(0x00000000001fa3af), UWORD(0x0000000000000000),
+        UWORD(0x0009840000000001), UWORD(0x0000001d8b600000), UWORD(0x00000000001dd936), UWORD(0x0000000000000000),
+        UWORD(0x0008c40000000001), UWORD(0x00000018d5600000), UWORD(0x000000000016ed56), UWORD(0x0000000000000000),
+    };
+
+    // [nprimes]
+    ulong co_primes_red[4] = {
+        UWORD(0x000382d397829cbd),
+        UWORD(0x000253dcc63f1413),
+        UWORD(0x000001915c80aefb),
+        UWORD(0x00025cb5f55a7ecb),
+    };
+
+    // [zcoeff_len]
+    ulong prod_primes[4] = {
+        UWORD(0x000c000000000001), UWORD(0x800000352f500000), UWORD(0x27a2280000673f78), UWORD(0x000000000000004a),
+    };
+
+    // [zcoeff_len + 1]
+    ulong tt[5];
+/*
+std::cout.precision(17);
+std::cout << "depth: " << depth << std::endl;
+std::cout << "an: " << an << std::endl;
+std::cout << "bn: " << bn << std::endl;
+std::cout << "zn: " << zn << std::endl;
+std::cout << "alen: " << alen << std::endl;
+std::cout << "blen: " << blen << std::endl;
+std::cout << "zlen: " << zlen << std::endl;
+*/
+    fftv2_ctx ctx(primes[0]);
+    ctx.set_depth(depth);
+
+    double* abuf = new double[ctx.data_size()];
+    double* bbuf = new double[ctx.data_size()];
+    ulong* zbuf = new ulong[zlen*zcoeff_len];
+
+    for (int i = 0; i < nprimes; i++)
+    {
+//std::cout << "doing prime: " << ctx.p << std::endl;
+
+        ctx.set_data(bbuf);
+        ctx.from_mpn(b, bn, bits);
+        ctx.transform_forward();
+        ctx.release_data();
+
+        ctx.set_data(abuf);
+        ctx.from_mpn(a, an, bits);
+        ctx.transform_forward();
+
+        // bake in 2^-depth * (p2*p3*p4)^-1 mod p1
+        {
+            ulong t1, thi, tlo;
+            thi = co_primes_red[i] >> (FLINT_BITS - depth);
+            tlo = co_primes_red[i] << (depth);
+            NMOD_RED2(t1, thi, tlo, ctx.mod);
+//            t1 = ulong(1) << depth;
+            ctx.point_mul(bbuf, nmod_inv(t1, ctx.mod));
+        }
+
+        ctx.transform_reverse();
+
+        for (ulong j = 0; j < zlen; j++)
+        {
+            double x = ctx.get_index(j);
+            slong xx = reduce_to_pm1n(x, ctx.p, ctx.pinv);
+            ulong y;
+            if (xx < 0)
+                y = ctx.mod.n + xx;
+            else
+                y = xx;
+
+if (j < 0)
+{
+    std::cout << "y[" << j << "]: " << y << std::endl;
+}
+
+            if (i == 0)
+                mpn_mul_1(zbuf + j*zcoeff_len, co_primes + i*zcoeff_len, zcoeff_len, y);
+            else
+                mpn_addmul_1(zbuf + j*zcoeff_len, co_primes + i*zcoeff_len, zcoeff_len, y);
+        }
+
+        ctx.release_data();
+
+        if (i + 1 < nprimes)
+        {
+            ctx.set_prime(primes[i + 1]);
+            ctx.set_depth(depth);
+        }
+    }
+
+    mpn_zero(z, zn);
+
+    for (ulong i = 0; i < zlen; i++)
+    {
+        ulong tbits = i*bits;
+        ulong* t = zbuf + i*zcoeff_len;
+        while (mpn_cmp(t, prod_primes, zcoeff_len) >= 0)
+            mpn_sub_n(t, t, prod_primes, zcoeff_len);
+
+        ulong toff = tbits/FLINT_BITS;
+        ulong tshift = tbits%FLINT_BITS;
+
+        if (toff >= zn)
+            break;
+/*
+std::cout << "i: " << i << ", toff: " << toff << ", tshift: " << tshift << ", adding length: " << FLINT_MIN(zcoeff_len, zn - toff) << "  ";
+std::cout << "t: " << format_hex(t[0]) << ", " <<
+                      format_hex(t[1]) << ", " <<
+                      format_hex(t[2]) << ", " <<
+                      format_hex(t[3]) << std::endl;
+*/
+
+        if (tshift == 0)
+        {
+            mpn_add_n(z + toff, z + toff, t, FLINT_MIN(zcoeff_len, zn - toff));
+//std::cout << "z[" << toff << "]: " << format_hex(z[toff]) << std::endl;
+        }
+        else
+        {
+            tt[zcoeff_len] = mpn_lshift(tt, t, zcoeff_len, tshift);
+            mpn_add_n(z + toff, z + toff, tt, FLINT_MIN(zcoeff_len + 1, zn - toff));
+        }
+    }
+
+    delete[] abuf;
+    delete[] bbuf;
+    delete[] zbuf;
+}
+
+void test_mpn_mul_v2(ulong an, ulong bn)
+{
+    ulong* a = new ulong[an];
+    ulong* b = new ulong[bn];
+    ulong* z1 = new ulong[an + bn];
+    ulong* z2 = new ulong[an + bn];
+    timeit_t timer;
+    ulong new_time, old_time;
+
+    for (ulong i = 0; i < an; i++)
+        a[i] = -UWORD(1);
+
+    for (ulong i = 0; i < bn; i++)
+        b[i] = -UWORD(1);
+
+timeit_start(timer);
+    if (an < bn)
+        mpn_mul(z1, b, bn, a, an);
+    else
+        mpn_mul(z1, a, an, b, bn);
+timeit_stop(timer);
+old_time = timer->wall;
+
+timeit_start(timer);
+    mpn_mul_v2(z2, a, an, b, bn);
+timeit_stop(timer);
+new_time = timer->wall;
+
+if (old_time > 30)
+{
+    std::cout << "----------- " << an << " * " << bn << " words -------------" << std::endl;
+    std::cout << "old_time: " << old_time << std::endl;
+    std::cout << "new_time: " << new_time << std::endl;
+    std::cout << " old/new: " << double(old_time)/double(new_time) << std::endl;
+}
+
+
+    for (ulong i = 0; i < an + bn; i++)
+    {
+        if (z1[i] != z2[i])
+        {
+            std::cout << "mismatch!!!!" << std::endl;
+            std::cout << "an: " << an << ", bn: " << bn << std::endl;
+            std::cout << "z1[" << i << "]: " << format_hex(z1[i]) << std::endl;
+            std::cout << "z2[" << i << "]: " << format_hex(z2[i]) << std::endl;
+            abort();
+        }
+    }
+
+    delete[] a;
+    delete[] b;
+    delete[] z1;
+    delete[] z2;
+}
+
 
 /*
 ------- depth: 20 --------
-new time: 7 ms, 6 ms
+new time: 7 ms, 5 ms
+   again: 6 ms, 6 ms
 old time: 7 ms, 7 ms
-ratio: 1, 1.16667
+ old/new: 1, 1.4
 ------- depth: 21 --------
-new time: 15 ms, 12 ms
+new time: 13 ms, 12 ms
+   again: 13 ms, 12 ms
 old time: 17 ms, 17 ms
-ratio: 1.13333, 1.41667
+ old/new: 1.30769, 1.41667
 ------- depth: 22 --------
-new time: 31 ms, 25 ms
+new time: 27 ms, 25 ms
+   again: 28 ms, 25 ms
 old time: 37 ms, 37 ms
-ratio: 1.19355, 1.48
+ old/new: 1.37037, 1.48
 ------- depth: 23 --------
-new time: 62 ms, 51 ms
-old time: 82 ms, 82 ms
-ratio: 1.32258, 1.60784
+new time: 56 ms, 51 ms
+   again: 56 ms, 52 ms
+old time: 82 ms, 83 ms
+ old/new: 1.46429, 1.62745
 ------- depth: 24 --------
-new time: 126 ms, 105 ms
-old time: 179 ms, 180 ms
-ratio: 1.42063, 1.71429
+new time: 111 ms, 104 ms
+   again: 111 ms, 104 ms
+old time: 179 ms, 181 ms
+ old/new: 1.61261, 1.74038
 ------- depth: 25 --------
-new time: 262 ms, 219 ms
-old time: 386 ms, 390 ms
-ratio: 1.47328, 1.78082
+new time: 231 ms, 217 ms
+   again: 231 ms, 217 ms
+old time: 391 ms, 393 ms
+ old/new: 1.69264, 1.81106
 ------- depth: 26 --------
-new time: 543 ms, 461 ms
-old time: 837 ms, 843 ms
-ratio: 1.54144, 1.82863
+new time: 492 ms, 463 ms
+   again: 491 ms, 463 ms
+old time: 858 ms, 858 ms
+ old/new: 1.7439, 1.85313
+------- depth: 27 --------
+new time: 1081 ms, 1034 ms
+   again: 1083 ms, 1036 ms
+Killed
 */
 void test_v2(ulong L)
 {
@@ -834,6 +1484,7 @@ void test_v2(ulong L)
     std::cout << "------- depth: " << L << " --------" << std::endl;
 
         ctx.set_depth(L);
+        ctx.set_data(new double[ctx.data_size()]);
 
 //    std::cout.precision(17);
 //    std::cout << "ctx.p: " << ctx.p << std::endl;
@@ -891,8 +1542,20 @@ void test_v2(ulong L)
                     std::abort();
                 }
             }
+
+        timeit_start(timer);
+            ctx.transform_forward();
+        timeit_stop(timer);
+        std::cout << "   again: " << timer->wall << " ms";
+
+        timeit_start(timer);
+            ctx.transform_reverse();
+        timeit_stop(timer);
+        std::cout << ", " << timer->wall << " ms" << std::endl;
+
         }
 
+        delete[] ctx.release_data();
         delete[] X;
     }
 
@@ -928,7 +1591,7 @@ void test_v2(ulong L)
         delete[] y;
     }
 
-    std::cout << "ratio: " << double(old_time)/double(new_time) << ", " << double(old_inv_time)/double(new_inv_time) << std::endl;
+    std::cout << " old/new: " << double(old_time)/double(new_time) << ", " << double(old_inv_time)/double(new_inv_time) << std::endl;
 
     flint_randclear(state);
 }
