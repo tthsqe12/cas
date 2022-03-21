@@ -1,6 +1,7 @@
 #define BLK_SZ 256
 #define LG_BLK_SZ 8
 #define BLK_SHIFT 10
+#define VEC_SZ 4
 
 struct fftv2_ctx {
     std::vector<std::vector<double>> wtab;
@@ -75,7 +76,6 @@ struct fftv2_ctx {
 
     void set_data(double* d)
     {
-        assert(data == nullptr);
         data = d;
     }
     double* release_data()
@@ -1118,6 +1118,7 @@ void fftv2_ctx::from_mpn(
 #undef aindex
 
         set_index(i, reduce_to_pm1n(x, p, pinv));
+//std::cout << "x[" << i << "]: " << get_index(i) << std::endl;
     }
 
     for (; i < xn; i++)
@@ -1129,8 +1130,8 @@ void fftv2_ctx::from_mpn(
 }
 
 
-
 struct crt_data {
+    double _prod_primes_d;
     ulong prime;
     ulong coeff_len;
     ulong nprimes;
@@ -1160,18 +1161,39 @@ struct crt_data {
         assert(i < nprimes);
         return data[nprimes*coeff_len + coeff_len + i];
     }
+
+    double& prod_primes_d() {return _prod_primes_d;}
 };
 
 
 struct mpn_ctx_v2 {
     std::vector<fftv2_ctx> ffts;
     std::vector<crt_data> crts;
+    double* double_buffer = nullptr;
+    ulong double_buffer_alloc = 0;
+
+    ~mpn_ctx_v2() {
+        free(double_buffer);
+    }
+
+
+    double* fit_double_buffer(ulong n)
+    {
+        if (n > double_buffer_alloc)
+        {
+            std::free(double_buffer);
+            double_buffer = reinterpret_cast<double*>(std::calloc(n, sizeof(double)));
+            double_buffer_alloc = n;
+        }
+        return double_buffer;
+    }
+
 
     ulong nprimes() {
         return ffts.size();
     }
 
-    mpn_ctx_v2(ulong p)
+    mpn_ctx_v2(ulong p) : double_buffer(nullptr), double_buffer_alloc(0)
     {
         ffts.emplace_back(p);
         crts.emplace_back(p, 1, 1);
@@ -1179,6 +1201,7 @@ struct mpn_ctx_v2 {
         crts[0].co_prime_red(0) = 1;
         crts[0].co_prime(0)[0] = 1;
         crts[0].prod_primes()[0] = p;
+        crts[0].prod_primes_d() = p;
     }
 
     void add_prime(ulong p)
@@ -1191,6 +1214,12 @@ struct mpn_ctx_v2 {
         t[len] = mpn_mul_1(t, crts.back().prod_primes(), len, p);
         len += (t[len] != 0);
 
+        mpz_t dummy;
+        dummy->_mp_d = t;
+        dummy->_mp_size = len;
+        dummy->_mp_alloc = len;
+        double dd = mpz_get_d(dummy);
+
         // leave room for one more bit
         if (FLINT_SIGN_EXT(t[len-1]) != 0)
             len += 1;
@@ -1198,6 +1227,7 @@ struct mpn_ctx_v2 {
         crts.emplace_back(p, len, nprimes());
 
         // set product of primes
+        crts.back().prod_primes_d() = dd;
         mpn_copyi(crts.back().prod_primes(), t, len);
 
         // set cofactors
@@ -1219,6 +1249,7 @@ struct mpn_ctx_v2 {
         add_prime(p);
     }
 };
+
 
 
 void mpn_mul_v2(
@@ -1311,6 +1342,7 @@ timeit_start(timer);
                 y = ctx.mod.n + xx;
             else
                 y = xx;
+
             if (i == 0)
                 mpn_mul_1(zbuf + j*zcoeff_len, mult, zcoeff_len, y);
             else
@@ -1333,6 +1365,12 @@ timeit_start(timer);
     {
         ulong tbits = i*bits;
         ulong* t = zbuf + i*zcoeff_len;
+
+//std::cout << "t[" << i << "]: ";
+//for (ulong r = 0; r < zcoeff_len; r++)
+//    std::cout << format_hex(t[r]) << ", " ;
+//std::cout << std::endl;
+
         while (mpn_cmp(t, limit, zcoeff_len) >= 0)
             mpn_sub_n(t, t, limit, zcoeff_len);
 
@@ -1364,22 +1402,597 @@ std::cout << "     final: " << timer->wall << std::endl;
 }
 
 
-/*
-std::cout << "i: " << i << ", toff: " << toff << ", tshift: " << tshift << ", adding length: " << FLINT_MIN(zcoeff_len, zn - toff) << "  ";
-std::cout << "t: " << format_hex(t[0]) << ", " <<
-                      format_hex(t[1]) << ", " <<
-                      format_hex(t[2]) << ", " <<
-                      format_hex(t[3]) << std::endl;
-*/
+
+template<ulong np, ulong bits>
+void mpn_to_ffts(
+    mpn_ctx_v2& Q,
+    const ulong* a_, ulong an_,
+    const PD<VEC_SZ>* two_pow)
+{
+    ulong nvs = (np + VEC_SZ - 1)/VEC_SZ;
+
+//std::cout << "mpn_to_ffts called" << std::endl;
+
+    FLINT_ASSERT(bits >= FLINT_BITS);
+
+    const uint32_t* a = reinterpret_cast<const uint32_t*>(a_);
+    ulong an = 2*an_;
+    ulong xn = UWORD(1) << Q.ffts[0].depth;
+
+    PD<VEC_SZ> X[nvs];
+    PD<VEC_SZ> P[nvs];
+    PD<VEC_SZ> PINV[nvs];
+
+    for (ulong l = 0; l < nvs; l++)
+    {
+#if VEC_SZ == 4
+        P[l] = PD<4>(Q.ffts[4*l+0].p, Q.ffts[4*l+1].p, Q.ffts[4*l+2].p, Q.ffts[4*l+3].p);
+        PINV[l] = PD<4>(Q.ffts[4*l+0].pinv, Q.ffts[4*l+1].pinv, Q.ffts[4*l+2].pinv, Q.ffts[4*l+3].pinv);
+#else
+    #error "unsupported VEC_SZ"
+#endif
+    }
+
+    // if i*bits + 32 < 32*an, then aindex is easy
+    ulong end_easy = std::min(xn, (32*an - 33)/bits);
+
+    // if i*bits >= 32*an, then aindex is zero
+    ulong end_hard = std::min(xn, (32*an + bits - 1)/bits);
+
+
+    ulong i = 0;
+
+#if 0
+    for (; i < end_easy; i++)
+    {
+        ulong k = (i*bits)/32;
+        ulong j = (i*bits)%32;
+
+        PD<4> ak = double(a[k] >> j);
+        PD<4> ttpp;
+        for (ulong l = 0; l < nvs; l++)
+            X[l] = ak;
+        k++;
+        j = 32 - j;
+        while (j + 32 <= bits)
+        {
+            ak = double(a[k]);
+            for (ulong l = 0; l < nvs; l++)
+            {
+                ttpp.load(two_pow + j*np + 4*l);
+                X[l] = add(X[l], mulmod2(ak, ttpp, P[l], PINV[l]));
+            }
+            k++;
+            j += 32;
+        }
+
+        if ((bits-j) != 0)
+        {
+            ak = double(a[k] << (32-(bits-j)));
+            for (ulong l = 0; l < nvs; l++)
+            {
+                ttpp.load(two_pow + (bits-32)*np + 4*l);
+                X[l] = add(X[l], mulmod2(ak, ttpp, P[l], PINV[l]));
+            }
+        }
+
+        for (ulong l = 0; l < nvs; l++)
+            X[l] = reduce_to_pm1n(X[l], P[l], PINV[l]);
+
+        for (ulong l = 0; l < np; l++)
+            Q.ffts[l].set_index(i, X[l/4].data[l%4]);
+    }
+
+#else
+
+#define CODE(ir)\
+    {\
+        ulong k = ((i+ir)*bits)/32;\
+        ulong j = ((  ir)*bits)%32;\
+\
+        PD<4> ak = double(a[k] >> j);\
+        for (ulong l = 0; l < nvs; l++)\
+            X[l] = ak;\
+        k++;\
+        j = 32 - j;\
+        while (j + 32 <= bits)\
+        {\
+            ak = double(a[k]);\
+            for (ulong l = 0; l < nvs; l++)\
+                X[l] = add(X[l], mulmod2(ak, two_pow[j*nvs+l], P[l], PINV[l]));\
+            k++;\
+            j += 32;\
+        }\
+\
+        if ((bits-j) != 0)\
+        {\
+            ak = double(a[k] << (32-(bits-j)));\
+            for (ulong l = 0; l < nvs; l++)\
+                X[l] = add(X[l], mulmod2(ak, two_pow[(bits-32)*nvs+l], P[l], PINV[l]));\
+        }\
+\
+        for (ulong l = 0; l < nvs; l++)\
+            X[l] = reduce_to_pm1n(X[l], P[l], PINV[l]);\
+\
+        for (ulong l = 0; l < np; l++)\
+            Q.ffts[l].set_index(i+ir, X[l/4].data[l%4]);\
+    }
+
+    if ((bits % 4) == 0)
+    {
+        end_easy &= -ulong(8);
+        for ( ; i < end_easy; i += 8)
+        {
+            CODE(0);CODE(1);CODE(2);CODE(3);
+            CODE(4);CODE(5);CODE(6);CODE(7);
+        }
+    }
+    else if ((bits % 2) == 0)
+    {
+        end_easy &= -ulong(16);
+        for ( ; i < end_easy; i += 16)
+        {
+            CODE(0);CODE(1);CODE(2);CODE(3);
+            CODE(4);CODE(5);CODE(6);CODE(7);
+            CODE(8);CODE(9);CODE(10);CODE(11);
+            CODE(12);CODE(13);CODE(14);CODE(15);
+        }
+    }
+    else
+    {
+        end_easy &= -ulong(32);
+        for ( ; i < end_easy; i += 32)
+        {
+            CODE(0);CODE(1);CODE(2);CODE(3);
+            CODE(4);CODE(5);CODE(6);CODE(7);
+            CODE(8);CODE(9);CODE(10);CODE(11);
+            CODE(12);CODE(13);CODE(14);CODE(15);
+            CODE(16);CODE(17);CODE(18);CODE(19);
+            CODE(20);CODE(21);CODE(22);CODE(23);
+            CODE(24);CODE(25);CODE(26);CODE(27);
+            CODE(28);CODE(29);CODE(30);CODE(31);
+        }
+    }
+#undef CODE
+
+#endif
+
+    for (; i < end_hard; i++)
+    {
+        ulong k = (i*bits)/32;
+        ulong j = (i*bits)%32;
+
+#define aindex(i) (((i) < an) ? a[i] : uint32_t(0))
+
+        PD<VEC_SZ> ak = double(aindex(k) >> j);
+        for (ulong l = 0; l < nvs; l++)
+            X[l] = ak;
+        k++;
+        j = 32 - j;
+        while (j + 32 <= bits)
+        {
+            ak = double(aindex(k));
+            for (ulong l = 0; l < nvs; l++)
+                X[l] = add(X[l], mulmod2(ak, two_pow[j*nvs+l], P[l], PINV[l]));
+            k++;
+            j += 32;
+        }
+
+        if ((bits-j) != 0)
+        {
+            ak = double(aindex(k) << (32-(bits-j)));
+            for (ulong l = 0; l < nvs; l++)
+                X[l] = add(X[l], mulmod2(ak, two_pow[(bits-32)*nvs+l], P[l], PINV[l]));
+        }
+
+#undef aindex
+
+        for (ulong l = 0; l < nvs; l++)
+            X[l] = reduce_to_pm1n(X[l], P[l], PINV[l]);
+
+        for (ulong l = 0; l < np; l++)
+            Q.ffts[l].set_index(i, X[l/VEC_SZ].data[l%VEC_SZ]);
+    }
+
+    for (ulong l = 0; l < np; l++)
+        for (ulong j = i; j < xn; j++)
+            Q.ffts[l].set_index(j, 0.0);
+}
+
+void fill_two_pow(
+    PD<VEC_SZ>* two_pow,
+    ulong bits,
+    std::vector<fftv2_ctx>& Qffts,
+    ulong np)
+{
+    ulong nvs = (np + VEC_SZ - 1)/VEC_SZ;
+
+    PD<VEC_SZ>* ps = new PD<VEC_SZ>[nvs];
+    PD<VEC_SZ>* pinvs = new PD<VEC_SZ>[nvs];
+
+    for (ulong l = 0; l < nvs; l++)
+    {
+#if VEC_SZ == 4
+        ps[l] = PD<4>(Qffts[4*l+0].p, Qffts[4*l+1].p, Qffts[4*l+2].p, Qffts[4*l+3].p);
+        pinvs[l] = PD<4>(Qffts[4*l+0].pinv, Qffts[4*l+1].pinv, Qffts[4*l+2].pinv, Qffts[4*l+3].pinv);
+#else
+    #error "unsuported VEC_SZ"
+#endif
+    }
+
+    for (ulong l = 0; l < nvs; l++)
+        two_pow[0*nvs+l] = 1;
+
+    for (ulong i = 1; i < bits; i++)
+    for (ulong l = 0; l < nvs; l++)
+    {
+        PD<VEC_SZ> t = two_pow[(i-1)*nvs+l];
+        two_pow[i*nvs+l] = reduce_to_pm1n(add(t, t), ps[l], pinvs[l]);
+    }
+
+    delete[] ps;
+    delete[] pinvs;
+}
+
+template <ulong np, ulong zcoeff_len>
+void mpn_from_ffts(
+    ulong* z, ulong zn, ulong zlen,
+    mpn_ctx_v2& Q,
+    ulong bits)
+{
+    ulong r[zcoeff_len + 1];
+    ulong t[zcoeff_len + 1];
+    ulong u, v;
+
+    if (zcoeff_len != Q.crts[np-1].coeff_len)
+    {
+        std::cout << "oops" << std::endl;
+        std::abort();
+    }
+
+    mpn_zero(z, zn);
+
+    ulong i = 0;
+
+    // easy if zn-zcoeff_len > floor(i*bits/64)
+    ulong end_easy = (zn >= zcoeff_len+1 ? zn - (zcoeff_len+1) : ulong(0))*FLINT_BITS/bits;
+
+    ulong Xs[BLK_SZ*np];
+
+    end_easy &= -BLK_SZ;
+
+    for (; i < end_easy; i += BLK_SZ)
+    {
+        ulong I = i/BLK_SZ;
+
+        for (ulong l = 0; l < np; l++)
+        {
+            PD<VEC_SZ> P = Q.ffts[l].p;
+            PD<VEC_SZ> PINV = Q.ffts[l].pinv;
+            double* x = Q.ffts[l].from_index(I);
+            for (ulong j = 0; j < BLK_SZ; j += 4*VEC_SZ)
+            {
+                PD<VEC_SZ> x0, x1, x2, x3;
+                PU<VEC_SZ> y0, y1, y2, y3;
+                x0.load(x + j + 0*VEC_SZ);
+                x1.load(x + j + 1*VEC_SZ);
+                x2.load(x + j + 2*VEC_SZ);
+                x3.load(x + j + 3*VEC_SZ);
+                x0 = reduce_to_pm1n(x0, P, PINV);
+                x1 = reduce_to_pm1n(x1, P, PINV);
+                x2 = reduce_to_pm1n(x2, P, PINV);
+                x3 = reduce_to_pm1n(x3, P, PINV);
+                x0 = reduce_pm1no_to_0n(x0, P);
+                x1 = reduce_pm1no_to_0n(x1, P);
+                x2 = reduce_pm1no_to_0n(x2, P);
+                x3 = reduce_pm1no_to_0n(x3, P);
+                y0 = convert_limited<PU<4>>(x0);
+                y1 = convert_limited<PU<4>>(x1);
+                y2 = convert_limited<PU<4>>(x2);
+                y3 = convert_limited<PU<4>>(x3);
+                y0.store(Xs + l*BLK_SZ + j + 0*VEC_SZ);
+                y1.store(Xs + l*BLK_SZ + j + 1*VEC_SZ);
+                y2.store(Xs + l*BLK_SZ + j + 2*VEC_SZ);
+                y3.store(Xs + l*BLK_SZ + j + 3*VEC_SZ);
+            }
+        }        
+
+        for (ulong j = 0; j < BLK_SZ; j += 1)
+        {
+            for (ulong l = 0; l < np; l++)
+            {
+                ulong* mult = Q.crts[np - 1].co_prime(l);
+                ulong y = Xs[l*BLK_SZ + j];
+                if (l == 0)
+                {
+                    umul_ppmm(r[1], r[0], mult[0], y);
+                    umul_ppmm(r[3], r[2], mult[2], y);
+                    umul_ppmm(u, v, mult[1], y);
+                    add_sssaaaaaa(r[3],r[2],r[1], r[3],r[2],r[1], 0,u,v);
+                }
+                else
+                {
+                    umul_ppmm(t[1], t[0], mult[0], y);
+                    umul_ppmm(t[3], t[2], mult[2], y);
+                    umul_ppmm(u, v, mult[1], y);
+                    add_sssaaaaaa(t[3],t[2],t[1], t[3],t[2],t[1], 0,u,v);
+                    add_ssssaaaaaaaa(r[3],r[2],r[1],r[0], r[3],r[2],r[1],r[0], t[3],t[2],t[1],t[0]);
+                }
+            }
+
+            ulong* limit = Q.crts[np - 1].prod_primes();
+
+        check1:
+            if (r[3] < limit[3])
+                goto done1;
+            if (r[3] > limit[3])
+                goto sub1;
+            
+            if (r[2] < limit[2])
+                goto done1;
+            if (r[2] > limit[2])
+                goto sub1;
+
+            if (r[1] < limit[1])
+                goto done1;
+            if (r[1] > limit[1])
+                goto sub1;
+
+            if (r[0] < limit[0])
+                goto done1;
+
+        sub1:
+            sub_ddddmmmmssss(r[3],r[2],r[1],r[0], r[3],r[2],r[1],r[0], limit[3],limit[2],limit[1],limit[0]);
+            goto check1;
+
+        done1:
+
+            ulong tbits = (i+j)*bits;
+            ulong toff = tbits/FLINT_BITS;
+            ulong tshift = tbits%FLINT_BITS;
+            assert(zn > zcoeff_len + toff);
+
+            if (tshift == 0)
+            {
+                add_ssssaaaaaaaa(z[toff+3],z[toff+2],z[toff+1],z[toff+0],
+                                 z[toff+3],z[toff+2],z[toff+1],z[toff+0],
+                                 r[3],r[2],r[1],r[0]);
+            }
+            else
+            {
+                r[4] =                       r[3] >> (64-tshift);
+                r[3] = (r[3] << (tshift)) | (r[2] >> (64-tshift));
+                r[2] = (r[2] << (tshift)) | (r[1] >> (64-tshift));
+                r[1] = (r[1] << (tshift)) | (r[0] >> (64-tshift));
+                r[0] =  r[0] << (tshift);
+
+                add_sssssaaaaaaaaaa(z[toff+4],z[toff+3],z[toff+2],z[toff+1],z[toff+0],
+                                    z[toff+4],z[toff+3],z[toff+2],z[toff+1],z[toff+0],
+                                    r[4], r[3],r[2],r[1],r[0]);
+            }
+        }
+    }
+
+    for (; i < zlen; i++)
+    {
+        for (ulong l = 0; l < np; l++)
+        {
+            double x = Q.ffts[l].get_index(i);
+            x = reduce_to_pm1n(x, Q.ffts[l].p, Q.ffts[l].pinv);
+            if (x < 0)
+                x += Q.ffts[l].p;
+            ulong y = x;
+
+            ulong* mult = Q.crts[np - 1].co_prime(l);
+            if (l == 0)
+            {
+                umul_ppmm(r[1], r[0], mult[0], y);
+                umul_ppmm(r[3], r[2], mult[2], y);
+                umul_ppmm(u, v, mult[1], y);
+                add_sssaaaaaa(r[3],r[2],r[1], r[3],r[2],r[1], 0,u,v);
+            }
+            else
+            {
+                umul_ppmm(t[1], t[0], mult[0], y);
+                umul_ppmm(t[3], t[2], mult[2], y);
+                umul_ppmm(u, v, mult[1], y);
+                add_sssaaaaaa(t[3],t[2],t[1], t[3],t[2],t[1], 0,u,v);
+                add_ssssaaaaaaaa(r[3],r[2],r[1],r[0], r[3],r[2],r[1],r[0], t[3],t[2],t[1],t[0]);
+            }
+        }
+
+        ulong* limit = Q.crts[np - 1].prod_primes();
+
+    check:
+        if (r[3] < limit[3])
+            goto done;
+        if (r[3] > limit[3])
+            goto sub;
+        
+        if (r[2] < limit[2])
+            goto done;
+        if (r[2] > limit[2])
+            goto sub;
+
+        if (r[1] < limit[1])
+            goto done;
+        if (r[1] > limit[1])
+            goto sub;
+
+        if (r[0] < limit[0])
+            goto done;
+
+    sub:
+        sub_ddddmmmmssss(r[3],r[2],r[1],r[0], r[3],r[2],r[1],r[0], limit[3],limit[2],limit[1],limit[0]);
+        goto check;
+
+    done:
+
+        ulong tbits = i*bits;
+        ulong toff = tbits/FLINT_BITS;
+        ulong tshift = tbits%FLINT_BITS;
+
+        if (toff >= zn)
+            break;
+
+        if (tshift == 0)
+        {
+            if (zn - toff >= zcoeff_len)
+            {
+                add_ssssaaaaaaaa(z[toff+3],z[toff+2],z[toff+1],z[toff+0],
+                                 z[toff+3],z[toff+2],z[toff+1],z[toff+0],
+                                 r[3],r[2],r[1],r[0]);
+            }
+            else if (zn - toff == 3)
+            {
+                add_sssaaaaaa(z[toff+2],z[toff+1],z[toff+0],
+                              z[toff+2],z[toff+1],z[toff+0],
+                              r[2],r[1],r[0]);
+            }
+            else if (zn - toff == 2)
+            {
+                add_ssaaaa(z[toff+1],z[toff+0],
+                           z[toff+1],z[toff+0],
+                           r[1],r[0]);
+            }
+            else
+            {
+                z[toff+0] += r[0];
+            }
+        }
+        else
+        {
+            r[4] =                       r[3] >> (64-tshift);
+            r[3] = (r[3] << (tshift)) | (r[2] >> (64-tshift));
+            r[2] = (r[2] << (tshift)) | (r[1] >> (64-tshift));
+            r[1] = (r[1] << (tshift)) | (r[0] >> (64-tshift));
+            r[0] =  r[0] << (tshift);
+
+            if (zn - toff > zcoeff_len)
+            {
+                add_sssssaaaaaaaaaa(z[toff+4],z[toff+3],z[toff+2],z[toff+1],z[toff+0],
+                                    z[toff+4],z[toff+3],z[toff+2],z[toff+1],z[toff+0],
+                                    r[4], r[3],r[2],r[1],r[0]);
+            }
+            else if (zn - toff == zcoeff_len)
+            {
+                add_ssssaaaaaaaa(z[toff+3],z[toff+2],z[toff+1],z[toff+0],
+                                 z[toff+3],z[toff+2],z[toff+1],z[toff+0],
+                                 r[3],r[2],r[1],r[0]);
+            }
+            else if (zn - toff == 3)
+            {
+                add_sssaaaaaa(z[toff+2],z[toff+1],z[toff+0],
+                              z[toff+2],z[toff+1],z[toff+0],
+                              r[2],r[1],r[0]);
+            }
+            else if (zn - toff == 2)
+            {
+                add_ssaaaa(z[toff+1],z[toff+0],
+                           z[toff+1],z[toff+0],
+                           r[1],r[0]);
+            }
+            else
+            {
+                z[toff+0] += r[0];
+            }
+        }        
+    }
+}
+
+
+void mpn_mul_v2p1(
+    mpn_ctx_v2& Q,
+    ulong* z,
+    const ulong* a, ulong an,
+    const ulong* b, ulong bn)
+{
+    ulong zn = an + bn;
+    ulong bits = 88;
+    ulong alen = cld(FLINT_BITS * an, bits);
+    ulong blen = cld(FLINT_BITS * bn, bits);
+    alen = FLINT_MAX(1, alen);
+    alen = FLINT_MAX(1, alen);
+    ulong zlen = alen + blen - 1;
+    ulong depth = clog2(zlen);
+    depth = FLINT_MAX(depth, LG_BLK_SZ);
+    ulong np = 4;
+timeit_t timer;
+
+//std::cout << "   zlen: " << zlen << std::endl;
+//std::cout << "2^depth: " << (UWORD(1)<<depth) << std::endl;
+
+    while (Q.nprimes() < np)
+        Q.add_prime();
+
+    for (ulong l = 0; l < np; l++)
+        Q.ffts[l].set_depth(depth);
+
+//std::cout << "bits <= " << 0.5*log2((Q.crts[np - 1].prod_primes_d()/blen)) << std::endl;
+
+    ulong fft_data_size = Q.ffts[0].data_size();
+    double* abuf = Q.fit_double_buffer(2*np*fft_data_size);
+    double* bbuf = abuf + np*fft_data_size;
+
+    ulong ttlen = bits;
+    ulong nvs = (np + VEC_SZ - 1)/VEC_SZ;
+    PD<VEC_SZ>* two_pow = new PD<VEC_SZ>[ttlen*nvs];
+    fill_two_pow(two_pow, bits, Q.ffts, np);
+
+timeit_start(timer);
+	for (ulong l = 0; l < np; l++)
+        Q.ffts[l].set_data(abuf + l*fft_data_size);
+    mpn_to_ffts<4, 88>(Q, a, an, two_pow);
+
+	for (ulong l = 0; l < np; l++)
+        Q.ffts[l].set_data(bbuf + l*fft_data_size);
+    mpn_to_ffts<4, 88>(Q, b, bn, two_pow);
+timeit_stop(timer);
+if (timer->wall > 5)
+std::cout << "mod: " << timer->wall << std::endl;
+
+    delete[] two_pow;
+
+timeit_start(timer);
+	for (ulong l = 0; l < np; l++)
+        Q.ffts[l].transform_forward();
+    
+	for (ulong l = 0; l < np; l++)
+    {
+        Q.ffts[l].set_data(abuf + l*fft_data_size);
+        Q.ffts[l].transform_forward();
+        // bake in 2^-depth * (p2*p3*p4)^-1 mod p1
+        ulong t1, thi, tlo;
+        ulong cop = Q.crts[np - 1].co_prime_red(l);
+        thi = cop >> (FLINT_BITS - depth);
+        tlo = cop << (depth);
+        NMOD_RED2(t1, thi, tlo, Q.ffts[l].mod);
+        t1 = nmod_inv(t1, Q.ffts[l].mod);
+        Q.ffts[l].point_mul(bbuf + l*fft_data_size, t1);
+        Q.ffts[l].transform_reverse();
+    }
+timeit_stop(timer);
+if (timer->wall > 5)
+std::cout << "fft: " << timer->wall << std::endl;
+
+timeit_start(timer);
+    mpn_from_ffts<4, 4>(z, zn, zlen, Q, bits);
+timeit_stop(timer);
+if (timer->wall > 5)
+std::cout << "crt: " << timer->wall << std::endl;
+
+//std::cout << "mpn_mul_v2p1 returning" << std::endl;
+}
 
 void test_mpn_mul_v2(mpn_ctx_v2& Q, ulong an, ulong bn)
 {
     ulong* a = new ulong[an];
     ulong* b = new ulong[bn];
     ulong* z1 = new ulong[an + bn];
-    ulong* z2 = new ulong[an + bn];
+//    ulong* z2 = new ulong[an + bn];
     timeit_t timer;
-    ulong new_time, old_time;
+    ulong new_time, flint_time, gmp_time;
+    bool print = an + bn > 1000000;
 
     for (ulong i = 0; i < an; i++)
         a[i] = -UWORD(3);
@@ -1387,28 +2000,45 @@ void test_mpn_mul_v2(mpn_ctx_v2& Q, ulong an, ulong bn)
     for (ulong i = 0; i < bn; i++)
         b[i] = -UWORD(2);
 
+    for (ulong i = 0; i < bn; i++)
+        z1[i] = 0;
+
+if (print)
+std::cout << "------- " << an << " * " << bn << " words => " << an+bn << " word product ----------" << std::endl;
+
+
+timeit_start(timer);
+    mpn_mul_v2p1(Q, z1, a, an, b, bn);
+timeit_stop(timer);
+new_time = timer->wall;
+
+timeit_start(timer);
+    if (an < bn)
+        flint_mpn_mul_fft_main(z1, b, bn, a, an);
+    else
+        flint_mpn_mul_fft_main(z1, a, an, b, bn);
+timeit_stop(timer);
+flint_time = timer->wall;
+
+
 timeit_start(timer);
     if (an < bn)
         mpn_mul(z1, b, bn, a, an);
     else
         mpn_mul(z1, a, an, b, bn);
 timeit_stop(timer);
-old_time = timer->wall;
+gmp_time = timer->wall;
 
-timeit_start(timer);
-    mpn_mul_v2(Q, z2, a, an, b, bn);
-timeit_stop(timer);
-new_time = timer->wall;
-
-if (old_time > 30)
+if (print)
 {
-    std::cout << "----------- " << an << " * " << bn << " words -------------" << std::endl;
-    std::cout << "old_time: " << old_time << std::endl;
-    std::cout << "new_time: " << new_time << std::endl;
-    std::cout << " old/new: " << double(old_time)/double(new_time) << std::endl;
+    std::cout << "  new_time: " <<   new_time << "  (" << double(new_time)/double(new_time) << ")" << std::endl;
+    std::cout << "flint_time: " << flint_time << "  (" << double(flint_time)/double(new_time) << ")" << std::endl;
+    std::cout << "  gmp_time: " <<   gmp_time << "  (" << double(gmp_time)/double(new_time) << ")" << std::endl;
 }
 
-
+#if 1
+    ulong* z2 = new ulong[an + bn];
+    mpn_mul_v2p1(Q, z2, a, an, b, bn);
     for (ulong i = 0; i < an + bn; i++)
     {
         if (z1[i] != z2[i])
@@ -1420,11 +2050,12 @@ if (old_time > 30)
             abort();
         }
     }
+    delete[] z2;
+#endif
 
     delete[] a;
     delete[] b;
     delete[] z1;
-    delete[] z2;
 }
 
 
@@ -1588,6 +2219,7 @@ std::cout << "t: " << format_hex(t[0]) << ", " <<
     delete[] zbuf;
 }
 
+#if 0
 void test_mpn_mul_v2(ulong an, ulong bn)
 {
     ulong* a = new ulong[an];
@@ -1627,7 +2259,7 @@ if (old_time > 30)
 
     for (ulong i = 0; i < an + bn; i++)
     {
-        if (z1[i] != z2[i])
+        if (0 && (z1[i] != z2[i]))
         {
             std::cout << "mismatch!!!!" << std::endl;
             std::cout << "an: " << an << ", bn: " << bn << std::endl;
@@ -1642,7 +2274,7 @@ if (old_time > 30)
     delete[] z1;
     delete[] z2;
 }
-
+#endif
 
 /*
 ------- depth: 20 --------
