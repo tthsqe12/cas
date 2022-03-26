@@ -1,6 +1,7 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<iostream>
+#include<iomanip>
 #include<string>
 #include<memory>
 #include<vector>
@@ -20,9 +21,9 @@
 #include "timing.h"
 #include <immintrin.h>
 
-#include "fft_packed.h"
-#include "fft_v1.cpp"
-#include "fft_v2.cpp"
+#include "packed.h"
+#include "v1.cpp"
+#include "v2.cpp"
 
 #ifndef _WIN32 // Linux - Unix
   #include <unistd.h>
@@ -36,7 +37,6 @@
   #include <conio.h>
   #include <windows.h>
 #endif
-
 
 ulong GetMS() {
 #ifndef _WIN32 // Linux - Unix
@@ -83,18 +83,9 @@ int main(int argc, char *argv[])
 
     ulong maxlen = 5700000;
 
-
+#if 1
     for (ulong i = 8; i <= 12; i++)
         test_v2(i);
-
-    if (0) {
-        ulong p = (UWORD(1)<<(50-1)) + 1;
-        for (int j = 0; j < 20; j++)
-        {
-            std::cout << format_hex(p) << std::endl;
-            p = next_fft_number(p);
-        }
-    }
 
     {
         mpn_ctx_v2 Q(0x0003f00000000001);
@@ -114,6 +105,26 @@ std::cout << "testing an = " << an << ", bn = " << bn << std::endl;
 std::cout << "testing an = " << an << ", bn = " << bn << std::endl;
             test_mpn_mul_v2(Q, an, bn);
         }
+    }
+#endif
+
+    {
+std::cout << "------------------- testing trunc ------------------" << std::endl;
+
+        for (int i = 0; i < 5; i++)
+        for (int j = 0; j < 5; j++)
+            hits[i][j] = 0;
+
+        for (ulong i = 10; i <= 13; i++)
+            test_v2_trunc(i);
+
+        profile_v2_trunc(17, 27);
+
+        for (int i = 0; i < 5; i++)
+        for (int j = 0; j < 5; j++)
+            if (hits[i][j] != 0)
+                std::cout << "hits[" << i <<"][" << j << "]: " << hits[i][j] << std::endl;
+    
     }
 
 #if 0
@@ -175,6 +186,17 @@ std::cout << std::endl;
     }
 #endif
 
+
+#if 0
+    {
+        ulong p = (UWORD(1)<<(50-1)) + 1;
+        for (int j = 0; j < 20; j++)
+        {
+            std::cout << format_hex(p) << std::endl;
+            p = next_fft_number(p);
+        }
+    }
+#endif
 
 #if 0
     for (ulong an = 100; an <= 2000; an += 100)
@@ -313,5 +335,7 @@ std::cout << "poly mul: " << t2-t1 << std::endl;
 #endif
 
     flint_cleanup();
+
+    std::cout << "PASS all good!" << std::endl;
     return 0;
 }

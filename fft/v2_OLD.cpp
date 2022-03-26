@@ -138,12 +138,12 @@ struct fftv2_ctx {
     }
 
     void transform_forward(ulong k, ulong j, ulong I, ulong S);
-    void transform_forward_column(ulong k, ulong j, ulong I, ulong S);
+    void transform_forward_blocked(ulong k, ulong j, ulong I, ulong S);
     void transform_forward() {transform_forward(depth - LG_BLK_SZ, 0, 0, 1);}
     template <int> inline void transform_forward_basecase(double *X, ulong j);
 
     void transform_reverse(ulong k, ulong j, ulong I, ulong S);
-    void transform_reverse_column(ulong k, ulong j, ulong I, ulong S);
+    void transform_reverse_blocked(ulong k, ulong j, ulong I, ulong S);
     void transform_reverse() {transform_reverse(depth - LG_BLK_SZ, 0, 0, 1);}
     template <int> inline void transform_reverse_basecase(double *X, ulong j);
 
@@ -559,7 +559,7 @@ inverse butterfly:
 }
 
 
-void fftv2_ctx::transform_forward_column(
+void fftv2_ctx::transform_forward_blocked(
    ulong k, // transform length 2^k
    ulong j,
    ulong I, // starting index
@@ -572,11 +572,11 @@ void fftv2_ctx::transform_forward_column(
 
         // column ffts
         for (ulong a = 0; a < ulong(1)<<k2; a++)
-            transform_forward_column(k1, j, I + a*S, S<<k2);
+            transform_forward_blocked(k1, j, I + a*S, S<<k2);
 
         // row ffts
         for (ulong b = 0; b < ulong(1)<<k1; b++)
-            transform_forward_column(k2, (j<<k1) + b, I + (b<<k2)*S, S);
+            transform_forward_blocked(k2, (j<<k1) + b, I + (b<<k2)*S, S);
 
         return;
     }
@@ -614,7 +614,7 @@ void fftv2_ctx::transform_forward_column(
     }
 }
 
-void fftv2_ctx::transform_reverse_column(
+void fftv2_ctx::transform_reverse_blocked(
    ulong k, // transform length 2^k
    ulong j,
    ulong I, // starting index
@@ -627,11 +627,11 @@ void fftv2_ctx::transform_reverse_column(
 
         // row ffts
         for (ulong b = 0; b < ulong(1)<<k1; b++)
-            transform_reverse_column(k2, (j<<k1) + b, I + (b<<k2)*S, S);
+            transform_reverse_blocked(k2, (j<<k1) + b, I + (b<<k2)*S, S);
 
         // column ffts
         for (ulong a = 0; a < ulong(1)<<k2; a++)
-            transform_reverse_column(k1, j, I + a*S, S<<k2);
+            transform_reverse_blocked(k1, j, I + a*S, S<<k2);
 
         return;
     }
@@ -789,7 +789,7 @@ void fftv2_ctx::transform_forward(
         ulong k2 = k - k1;
 
         for (ulong a = 0; a < ulong(1)<<k2; a++)
-            transform_forward_column(k1, j, I + a*S, S<<k2);
+            transform_forward_blocked(k1, j, I + a*S, S<<k2);
 
         for (ulong b = 0; b < ulong(1)<<k1; b++)
             transform_forward(k2, (j<<k1) + b, I + (b<<k2)*S, S);
@@ -800,7 +800,7 @@ void fftv2_ctx::transform_forward(
     if (k == 2)
     {
         // k1 = 2; k2 = 0
-        transform_forward_column(2, j, I, S);
+        transform_forward_blocked(2, j, I, S);
         transform_forward(0, 4*j+0, I+S*0, S);
         transform_forward(0, 4*j+1, I+S*1, S);
         transform_forward(0, 4*j+2, I+S*2, S);
@@ -809,7 +809,7 @@ void fftv2_ctx::transform_forward(
     else if (k == 1)
     {
         // k1 = 1; k2 = 0
-        transform_forward_column(1, j, I, S);
+        transform_forward_blocked(1, j, I, S);
         transform_forward(0, 2*j+0, I+S*0, S);
         transform_forward(0, 2*j+1, I+S*1, S);
     }
@@ -834,7 +834,7 @@ void fftv2_ctx::transform_reverse(
             transform_reverse(k2, (j<<k1) + b, I + (b<<k2)*S, S);
 
         for (ulong a = 0; a < ulong(1)<<k2; a++)
-            transform_reverse_column(k1, j, I + a*S, S<<k2);
+            transform_reverse_blocked(k1, j, I + a*S, S<<k2);
 
         return;
     }
@@ -846,14 +846,14 @@ void fftv2_ctx::transform_reverse(
         transform_reverse(0, 4*j+1, I+S*1, S);
         transform_reverse(0, 4*j+2, I+S*2, S);
         transform_reverse(0, 4*j+3, I+S*3, S);
-        transform_reverse_column(2, j, I, S);
+        transform_reverse_blocked(2, j, I, S);
     }
     else if (k == 1)
     {
         // k1 = 1; k2 = 0
         transform_reverse(0, 2*j+0, I+S*0, S);
         transform_reverse(0, 2*j+1, I+S*1, S);
-        transform_reverse_column(1, j, I, S);
+        transform_reverse_blocked(1, j, I, S);
     }
     else
     {
@@ -884,7 +884,7 @@ ulong next_fft_number(ulong p)
         return q;
     if (l < 5)
         return (UWORD(1) << (bits - 2)) + 1;
-    return (UWORD(1) << (bits)) - (UWORD(1) << (l - 1)) + 1;   
+    return (UWORD(1) << (bits)) - (UWORD(1) << (l - 1)) + 1;
 }
 
 #if 0
@@ -912,7 +912,7 @@ void fftv2_ctx::from_mpn(
             for (ulong j = 0; j < ttlen; j++)
             {
                 tt[j] = (aoff+j < an) ? a[aoff+j] : 0;
-            }            
+            }
         }
         else
         {
@@ -1695,7 +1695,7 @@ void mpn_from_ffts(
                 y2.store(Xs + l*BLK_SZ + j + 2*VEC_SZ);
                 y3.store(Xs + l*BLK_SZ + j + 3*VEC_SZ);
             }
-        }        
+        }
 
         for (ulong j = 0; j < BLK_SZ; j += 1)
         {
@@ -1727,7 +1727,7 @@ void mpn_from_ffts(
                 goto done1;
             if (r[3] > limit[3])
                 goto sub1;
-            
+
             if (r[2] < limit[2])
                 goto done1;
             if (r[2] > limit[2])
@@ -1808,7 +1808,7 @@ void mpn_from_ffts(
             goto done;
         if (r[3] > limit[3])
             goto sub;
-        
+
         if (r[2] < limit[2])
             goto done;
         if (r[2] > limit[2])
@@ -1896,7 +1896,7 @@ void mpn_from_ffts(
             {
                 z[toff+0] += r[0];
             }
-        }        
+        }
     }
 }
 
@@ -1956,7 +1956,7 @@ std::cout << "mod: " << timer->wall << std::endl;
 timeit_start(timer);
 	for (ulong l = 0; l < np; l++)
         Q.ffts[l].transform_forward();
-    
+
 	for (ulong l = 0; l < np; l++)
     {
         Q.ffts[l].set_data(abuf + l*fft_data_size);
