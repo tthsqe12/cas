@@ -24,6 +24,7 @@
 #include "packed.h"
 #include "v1.cpp"
 #include "v2.cpp"
+#include "v2_test.cpp"
 
 #ifndef _WIN32 // Linux - Unix
   #include <unistd.h>
@@ -83,7 +84,7 @@ int main(int argc, char *argv[])
 
     ulong maxlen = 5700000;
 
-#if 1
+#if 0
     for (ulong i = 8; i <= 12; i++)
         test_v2(i);
 
@@ -109,22 +110,20 @@ std::cout << "testing an = " << an << ", bn = " << bn << std::endl;
 #endif
 
     {
-std::cout << "------------------- testing trunc ------------------" << std::endl;
-
         for (int i = 0; i < 5; i++)
         for (int j = 0; j < 5; j++)
             hits[i][j] = 0;
 
-        for (ulong i = 10; i <= 13; i++)
-            test_v2_trunc(i);
-
-        profile_v2_trunc(17, 27);
+        test_v2_trunc(10, 14);
+        profile_v2_trunc(17, 22);
 
         for (int i = 0; i < 5; i++)
         for (int j = 0; j < 5; j++)
             if (hits[i][j] != 0)
                 std::cout << "hits[" << i <<"][" << j << "]: " << hits[i][j] << std::endl;
-    
+
+        test_v2_mul(100000, 1000);
+        profile_v2_mul(10000000, false);
     }
 
 #if 0

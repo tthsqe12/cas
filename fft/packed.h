@@ -1,3 +1,6 @@
+#define PI4 packed<slong, 4>
+#define PU4 packed<ulong, 4>
+#define PD4 packed<double, 4>
 
 template<typename T, int SZ>
 struct packed {
@@ -5,7 +8,7 @@ struct packed {
 };
 
 template<>
-struct packed<ulong, 4> {
+struct PU4 {
     __m256i data;
     packed() {}
     packed(uint64_t x) : data(_mm256_set1_epi64x(x)) {}
@@ -20,7 +23,7 @@ struct packed<ulong, 4> {
 };
 
 template<>
-struct packed<slong, 4> {
+struct PI4 {
     __m256i data;
     packed() {}
     packed(int64_t x) : data(_mm256_set1_epi64x(x)) {}
@@ -29,7 +32,7 @@ struct packed<slong, 4> {
 };
 
 template<>
-struct packed<double, 4> {
+struct PD4 {
     __m256d data;
     packed() {}
     packed(double x) : data(_mm256_set1_pd(x)) {}
@@ -42,10 +45,6 @@ struct packed<double, 4> {
     void store(double* a) const {_mm256_storeu_pd(a, data);}
     void store_aligned(double* a) const {_mm256_store_pd(a, data);}
 };
-
-#define PI4 packed<slong, 4>
-#define PU4 packed<ulong, 4>
-#define PD4 packed<double, 4>
 
 std::ostream& operator<<(std::ostream& o, const PD4& x)
 {
@@ -246,18 +245,28 @@ inline double reduce_pm2n_to_0n(double a, double n) {
     return reduce_pm2n_to_0n(a, n, neg(n));
 }
 
-// reduce a mod n in [-n,n] assuming
-inline double reduce_to_pm1n(double a, double n, double ninv)
-{
-    double q = round(mul(a, ninv));
-    return fnmadd(q, n, a);
+// return a mod n in [-n,n]
+template <typename T>
+inline T reduce_to_pm1n(T a, T n, T ninv) {
+    return fnmadd(round(mul(a, ninv)), n, a);
 }
 
-inline PD4 reduce_to_pm1n(PD4 a, PD4 n, PD4 ninv)
-{
-    PD4 q = round(mul(a, ninv));
-    return fnmadd(q, n, a);
+// return a mod n in (-n,n)
+template <typename T>
+inline T reduce_to_pm1no(T a, T n, T ninv) {
+    return fnmadd(round(mul(a, ninv)), n, a);
 }
+
+// return a mod n in [0,n)
+template <typename T> inline T reduce_to_0n(T a, T n, T ninv) {
+    return reduce_pm1no_to_0n(reduce_to_pm1no(a, n, ninv), n);
+}
+
+// [0,n] -> (-n/2, n/2]
+double reduce_0n_to_pmhn(double a, double n) {
+    return a > n*0.5 ? a-n : a;
+}
+
 
 // return a*b mod n in [-n,n] assuming
 // a in [-2*n, 2*n], b in (-n/2, n/2), bon = b/n
@@ -294,6 +303,11 @@ inline PD4 mulmod2(PD4 a, PD4 b, PD4 n, PD4 ninv) {
     PD4 l = fmsub(a, b, h);
     return add(fnmadd(q, n, h), l);
 }
+
+
+#undef PI4
+#undef PU4
+#undef PD4
 
 
 #define add_sssssaaaaaaaaaa(s4,s3,s2,s1,s0, a4,a3,a2,a1,a0, b4,b3,b2,b1,b0)  \
@@ -343,7 +357,87 @@ std::ostream& operator<<(std::ostream& o, const format_hex& a)
     return o;
 }
 
+std::string format_fixed(double x, ulong l)
+{
+    std::string s(l, ' ');
+    ulong y = std::abs(x);
+    while (l > 0)
+    {
+        s[--l] = '0' + (y%10);
+        y = y/10;
+        if (y == 0)
+            break;
+    }
 
-#undef PI4
-#undef PU4
-#undef PD4
+    return s;
+}
+
+std::string format_fixed(double x, ulong l, ulong r)
+{
+    std::string s(l+r+1, ' ');
+    s[l] = '.';
+    ulong y = std::abs(x*n_pow(10, r));
+    while (r > 0)
+    {
+        --r;
+        s[l+1+r] = '0' + (y%10);
+        y = y/10;
+    }
+    while (l > 0)
+    {
+        --l;
+        s[l] = '0' + (y%10);
+        y = y/10;
+        if (y == 0)
+            break;
+    }
+
+    return s;
+}
+
+ulong saturate_bits(ulong a)
+{
+    a |= a >> 1;
+    a |= a >> 2;
+    a |= a >> 4;
+    a |= a >> 8;
+    a |= a >> 16;
+    return a;
+}
+
+ulong cld(ulong a, ulong b)
+{
+    return (a + b - 1)/b;
+}
+
+ulong round_up(ulong a, ulong b)
+{
+    return cld(a, b)*b;
+}
+
+ulong pow2(int k)
+{
+    return ulong(1) << k;
+}
+
+ulong clog2(ulong x)
+{
+    if (x <= 2)
+        return x == 2;
+    return FLINT_BITS - __builtin_clzll(x - 1);
+}
+
+ulong next_fft_number(ulong p)
+{
+    ulong bits = FLINT_BIT_COUNT(p);
+    ulong l; count_trailing_zeros(l, p - 1);
+    ulong q = p - (UWORD(2) << l);
+    if (bits < 20)
+        std::abort();
+    if (FLINT_BIT_COUNT(q) == bits)
+        return q;
+    if (l < 5)
+        return (UWORD(1) << (bits - 2)) + 1;
+    return (UWORD(1) << (bits)) - (UWORD(1) << (l - 1)) + 1;
+}
+
