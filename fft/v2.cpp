@@ -4,65 +4,35 @@
 #define VEC_SZ 4
 
 struct fftv2_ctx {
-    std::vector<std::vector<double>> wtab;
     double * data;
-    const double * w2s;
     double p;
     double pinv;
     nmod_t mod;
     ulong primitive_root;
     ulong depth;
     ulong blk_sz;
+    double * w2s;
+    ulong wtab_depth;
+
+    void init_prime(ulong p);
 
     fftv2_ctx(ulong pp)
     {
         blk_sz = BLK_SZ;
-        w2s = nullptr;
         data = nullptr;
-        p = pp;
-        pinv = 1.0/p;
-        nmod_init(&mod, pp);
-        primitive_root = n_primitive_root_prime(pp);
-        wtab.clear();
+        w2s = nullptr;
+        init_prime(pp);
     }
 
     void set_prime(ulong pp)
     {
         blk_sz = BLK_SZ;
+        std::free(w2s);
         w2s = nullptr;
-        p = pp;
-        pinv = 1.0/p;
-        nmod_init(&mod, pp);
-        primitive_root = n_primitive_root_prime(pp);
-        wtab.clear();
+        init_prime(pp);
     }
 
-    void fit_wtab(ulong k)
-    {
-        while (wtab.size() <= k)
-        {
-            ulong l = wtab.size();
-            ulong n = UWORD(1) << l;
-            // wtab[l] should be filled with n = 2^l th roots of unity
-            ulong tabsize = (l == 0) ? n : n/2;
-            std::vector<double> tab(tabsize);
-
-//std::cout << "filling depth " << l << " for prime " << format_hex(mod.n) << std::endl;
-
-            ulong w = nmod_pow_ui(primitive_root, (mod.n - 1)>>l, mod);
-            ulong wi = 1;
-            double half_p = mul(p, 0.5);
-
-            for (ulong j = 0; j < tabsize; j++)
-            {
-                double x = wi;
-                tab[n_revbin(j, l)/2] = (x >= half_p) ? x - p : x;
-                wi = nmod_mul(wi, w, mod);
-            }
-
-            wtab.emplace_back(tab);
-        }
-    }
+    void fit_wtab(ulong k);
 
     inline ulong offset(ulong I)
     {
@@ -87,7 +57,6 @@ struct fftv2_ctx {
 
     void set_depth(ulong l)
     {
-        assert(data == nullptr);
         depth = l;
         if (l < LG_BLK_SZ)
         {
@@ -95,7 +64,6 @@ struct fftv2_ctx {
             abort();
         }
         fit_wtab(l);
-        w2s = wtab[l].data();
     }
 
     inline double* from_index(ulong I)
@@ -161,16 +129,67 @@ struct fftv2_ctx {
     inline void ifft() {
         ifft_main(0, 1, depth - LG_BLK_SZ, 0);
     }
-    void ifft_trunc_debug(ulong I, ulong S, ulong k, ulong j, ulong z, ulong n, bool f);
     inline void ifft_trunc(ulong trunc) {
         assert(trunc % BLK_SZ == 0);
         ifft_trunc(0, 1, depth - LG_BLK_SZ, 0, trunc/BLK_SZ, trunc/BLK_SZ, false);
-        //ifft_trunc_debug(0, 1, depth, 0, trunc, trunc, false);
     }
 
     void from_mpn(const ulong * a, ulong an, ulong bits);
     void point_mul(const double* b, ulong mm);
 };
+
+void fftv2_ctx::init_prime(ulong pp)
+{
+    p = pp;
+    pinv = 1.0/p;
+    nmod_init(&mod, pp);
+    primitive_root = n_primitive_root_prime(pp);
+
+    // fill wtab to a depth of 6 (32 entries: 1, exp(pi*i/2), exp(pi*i/4), exp(pi*i*3/4), ...) 
+    wtab_depth = 6;
+    ulong N = pow2(wtab_depth-1);
+    w2s = reinterpret_cast<double*>(std::malloc(N*sizeof(double)));
+
+    ulong w = nmod_pow_ui(primitive_root, (mod.n - 1)>>wtab_depth, mod);
+    ulong wi = 1;
+    for (ulong j = 0; j < N; j++)
+    {
+        w2s[n_revbin(j, wtab_depth)/2] = reduce_0n_to_pmhn(wi, p);
+        wi = nmod_mul(wi, w, mod);
+    }
+}
+
+void fftv2_ctx::fit_wtab(ulong k)
+{
+    while (wtab_depth < k)
+    {
+        wtab_depth++;
+        ulong N = pow2(wtab_depth-1);
+        w2s = reinterpret_cast<double*>(std::realloc(w2s, N*sizeof(double)));
+
+        slong ww = nmod_pow_ui(primitive_root, (mod.n - 1)>>wtab_depth, mod);
+        packed<double, VEC_SZ> w = reduce_0n_to_pmhn(double(ww), p, 0.5*p);
+        packed<double, VEC_SZ> n = p;
+        packed<double, VEC_SZ> ninv = pinv;
+        packed<double, VEC_SZ> hn = 0.5*p;
+        packed<double, VEC_SZ> x0, x1;
+        double* wptr = w2s;
+        ulong j = 0;
+        assert(N/2 >= 2*VEC_SZ);
+        do {
+            x0.load(wptr + j);
+            x1.load(wptr + j + VEC_SZ);
+            x0 = mulmod2(x0, w, n, ninv);
+            x1 = mulmod2(x1, w, n, ninv);
+            x0 = reduce_pm1n_to_pmhn(x0, n, hn);
+            x1 = reduce_pm1n_to_pmhn(x1, n, hn);
+            x0.store(wptr + N/2 + j);
+            x1.store(wptr + N/2 + j + VEC_SZ);
+            j += 2*VEC_SZ;
+        } while (j < N/2);
+    }
+}
+
 
 #include "basecases.cpp"
 
@@ -379,8 +398,6 @@ void fftv2_ctx::ifft_main(
 }
 
 //////////////// truncated fft /////////////////////////
-
-ulong hits[5][5];
 
 void fftv2_ctx::fft_trunc_block(
     ulong I, // starting index
@@ -616,49 +633,255 @@ void fftv2_ctx::ifft_trunc_block(
     assert(n <= z);
     assert(1 <= z && z <= pow2(k));
     assert(1 <= n+f && n+f <= pow2(k));
-    if (k < 1)
+
+    if (!f && z == n && n == pow2(k))
     {
+        ifft_main_block(I, S, k, j);
         return;
     }
-    else if (k == 1)
+
+    if (k == 2)
     {
         double* X0 = from_index(I + S*0);
         double* X1 = from_index(I + S*1);
-        double w = w2s[j];
-        ulong mask = saturate_bits(j);
-        double W  = ((j) == 0) ? -w2s[0] : w2s[(  (j)  )^(mask>>1)];
+        double* X2 = from_index(I + S*2);
+        double* X3 = from_index(I + S*3);
 
-        for (ulong i = 0; i < blk_sz; i++)
+hits[z][2*n+f]++;
+
+        /*
+            common cases (z,n,f) =
+               most common  (2,2,true)
+               most common  (3,3,false|true)
+                            (4,0,true)
+                            (4,1,false|true)
+                            (4,2,false|true)
+                            (4,3,false|true)
+
+            k = 2, z = 4, n = 0, f = true
+            [1//4   1//4*w   1//4*w^2   1//4*w^3]
+
+            k = 2, z = 4, n = 1, f = false
+            [4   -w   -w^2   -w^3]
+
+            k = 2, z = 4, n = 1, f = true
+            [4        -w   -w^2        -w^3]
+            [1   -1//2*w      0   -1//2*w^3]
+
+            k = 2, z = 4, n = 2, f = false
+            [   2       2   -w^2      0]
+            [2//w   -2//w      0   -w^2]
+
+            k = 2, z = 4, n = 2, f = true
+            [            2                2        -w^2             0]
+            [         2//w            -2//w           0          -w^2]
+            [1//2*r + 1//2   -1//2*r + 1//2   -1//2*w^2   -1//2*r*w^3]
+
+            k = 2, z = 4, n = 3, f = false
+            [      -r + 1           r + 1         2   r*w^3]
+            [        2//w           -2//w         0    -w^2]
+            [(r + 1)//w^2   (-r + 1)//w^2   -2//w^2    -r*w]
+
+            k = 2, z = 4, n = 3, f = true
+            [      -r + 1           r + 1         2   r*w^3]
+            [        2//w           -2//w         0    -w^2]
+            [(r + 1)//w^2   (-r + 1)//w^2   -2//w^2    -r*w]
+            [          -r               r         1   r*w^3]
+        */
+
+        if (z == 2 && n == 2 && f)
         {
-            if (n == 2)
+        /*
+            k = 2, z = 2, n = 2, f = true
+            [            2                2]
+            [         2//w            -2//w]
+            [1//2*r + 1//2   -1//2*r + 1//2]
+
+            {x0, x1} = {2*(x0 + x1), 2*w^-1*(x0 - x1), (x0+x1)/2 + (x0-x1)*i/2}
+        */
+
+            packed<double, VEC_SZ> N = p;
+            packed<double, VEC_SZ> Ninv = pinv;
+            ulong mask = saturate_bits(j);
+            double W = ((j) == 0) ? -w2s[0] : w2s[(2*(j)  )^(mask)];
+            packed<double, VEC_SZ> c0 = 2.0;
+            packed<double, VEC_SZ> c1 = reduce_pm1n_to_pmhn(-2.0*W, p);
+            packed<double, VEC_SZ> c2 = 0.5 - 0.5*p;
+            packed<double, VEC_SZ> c3 = reduce_pm1n_to_pmhn(mulmod2(w2s[1], 0.5 - 0.5*p, p, pinv), p);
+
+            for (ulong i = 0; i < blk_sz; i += 2*VEC_SZ)
             {
-                double u = X0[i];
-                double v = X1[i];
-                X0[i] = reduce_to_pm1n(u + v, p, pinv);
-                X1[i] = mulmod2(v - u, W, p, pinv);
+                packed<double, VEC_SZ> u0, v0, s0, t0, u1, v1, s1, t1;
+                u0.load(X0 + i);
+                    u1.load(X0 + i + VEC_SZ);
+                v0.load(X1 + i);
+                    v1.load(X1 + i + VEC_SZ);
+                s0 = add(u0, v0);
+                    s1 = add(u1, v1);
+                t0 = sub(u0, v0);
+                    t1 = sub(u1, v1);
+                u0 = mulmod2(s0, c0, N, Ninv);
+                    u1 = mulmod2(s1, c0, N, Ninv);
+                v0 = mulmod2(t0, c1, N, Ninv);
+                    v1 = mulmod2(t1, c1, N, Ninv);
+                s0 = mulmod2(s0, c2, N, Ninv);
+                    s1 = mulmod2(s1, c2, N, Ninv);
+                t0 = mulmod2(t0, c3, N, Ninv);
+                    t1 = mulmod2(t1, c3, N, Ninv);
+                s0 = add(s0, t0);
+                    s1 = add(s1, t1);
+                u0.store(X0 + i);
+                    u1.store(X0 + i + VEC_SZ);
+                v0.store(X1 + i);
+                    v1.store(X1 + i + VEC_SZ);
+                s0.store(X2 + i);
+                    s1.store(X2 + i + VEC_SZ);
             }
-            else if (n == 1)
-            {
-                double u = reduce_to_pm1n(X0[i], p, pinv);
-                double v = z == 2 ? mulmod2(X1[i], w, p, pinv) : 0.0;
-                X0[i] = 2*u - v;
-                if (f) X1[i] = u - v;
-            }
-            else if (n == 0)
-            {
-                assert(f);
-                double u = X0[i];
-                double v = z == 2 ? mulmod2(X1[i], w, p, pinv) : 0.0;
-                X0[i] = mulmod2((u + v), (0.5-0.5*p), p, pinv);
-            }
-            else
-            {
-                std::cout << "ooops" << std::endl;
-                std::abort();
-            }
+
+            return;
         }
+        else if (z == 3 && n == 3 && !f)
+        {
+        /*
+            k = 2, z = 3, n = 3, f = false
+            [      -r + 1           r + 1         2]
+            [        2//w           -2//w         0]
+            [(r + 1)//w^2   (-r + 1)//w^2   -2//w^2]
+
+            {x0, x1, x3} = {        -r*(x0 - x1) + (x0 + x1) + 2*x2,
+                            2*w^-1*(x0 - x1),
+                             -w^-2*(-r*(x0 - x1) - (x0 + x1) + 2*x2)}
+
+                         = {        2*x2 - r*v0 + u0,
+                            2*w^-1*v0,
+                             -w^-2*(2*x2 - r*v0 - u0)}
+        */
+            packed<double, VEC_SZ> N = p;
+            packed<double, VEC_SZ> Ninv = pinv;
+            ulong mask = saturate_bits(j);
+            double W = ((j) == 0) ? -w2s[0] : w2s[(2*(j)  )^(mask)];
+            double W2 = ((j) == 0) ? -w2s[0] : w2s[(  (j)  )^(mask>>1)];
+
+            packed<double, VEC_SZ> f0 = w2s[1];                         // r
+            packed<double, VEC_SZ> f1 = reduce_pm1n_to_pmhn(-2.0*W, p); // 2*w^-1
+            packed<double, VEC_SZ> f2 = 2.0;
+            packed<double, VEC_SZ> f3 = W2;                             // -w^-2
+
+            for (ulong i = 0; i < blk_sz; i += 2*VEC_SZ)
+            {
+                packed<double, VEC_SZ> a0, b0, c0, u0, v0,  a1, b1, c1, u1, v1;
+                a0.load(X0 + i);
+                    a1.load(X0 + i + VEC_SZ);
+                b0.load(X1 + i);
+                    b1.load(X1 + i + VEC_SZ);
+                c0.load(X2 + i);
+                    c1.load(X2 + i + VEC_SZ);
+                u0 = add(a0, b0);
+                    u1 = add(a1, b1);
+                v0 = sub(a0, b0);
+                    v1 = sub(a1, b1);
+                c0 = reduce_to_pm1n(c0, N, Ninv);
+                    c1 = reduce_to_pm1n(c1, N, Ninv);
+                u0 = reduce_to_pm1n(u0, N, Ninv);
+                    u1 = reduce_to_pm1n(u1, N, Ninv);
+                b0 = mulmod2(v0, f1, N, Ninv);
+                    b1 = mulmod2(v1, f1, N, Ninv);
+                v0 = mulmod2(v0, f0, N, Ninv);
+                    v1 = mulmod2(v1, f0, N, Ninv);
+                c0 = fmsub(f2, c0, v0);
+                    c1 = fmsub(f2, c1, v1);
+                a0 = add(c0, u0);
+                    a1 = add(c1, u1);
+                c0 = sub(c0, u0);                
+                    c1 = sub(c1, u1);                
+                c0 = mulmod2(c0, f3, N, Ninv);
+                    c1 = mulmod2(c1, f3, N, Ninv);
+                a0.store(X0 + i);
+                    a1.store(X0 + i + VEC_SZ);
+                b0.store(X1 + i);
+                    b1.store(X1 + i + VEC_SZ);
+                c0.store(X2 + i);
+                    c1.store(X2 + i + VEC_SZ);
+            }
+
+            return;
+        }
+        else if (z == 3 && n == 3 && f)
+        {
+        /*
+            k = 2, z = 3, n = 3, f = true
+            [      -r + 1           r + 1         2]
+            [        2//w           -2//w         0]
+            [(r + 1)//w^2   (-r + 1)//w^2   -2//w^2]
+            [          -r               r         1]
+
+            {x0, x1, x3, x4} = {        -r*(x0 - x1) + (x0 + x1) + 2*x2,
+                                2*w^-1*(x0 - x1),
+                                 -w^-2*(-r*(x0 - x1) - (x0 + x1) + 2*x2),
+                                        -r*(x0 - x1)             +   x2  }
+        */
+
+            packed<double, VEC_SZ> N = p;
+            packed<double, VEC_SZ> Ninv = pinv;
+            ulong mask = saturate_bits(j);
+            double W = ((j) == 0) ? -w2s[0] : w2s[(2*(j)  )^(mask)];
+            double W2 = ((j) == 0) ? -w2s[0] : w2s[(  (j)  )^(mask>>1)];
+
+            packed<double, VEC_SZ> f0 = w2s[1];                         // r
+            packed<double, VEC_SZ> f1 = reduce_pm1n_to_pmhn(-2.0*W, p); // 2*w^-1
+            packed<double, VEC_SZ> f2 = 2.0;
+            packed<double, VEC_SZ> f3 = W2;                             // -w^-2
+
+            for (ulong i = 0; i < blk_sz; i += 2*VEC_SZ)
+            {
+                packed<double, VEC_SZ> a0, b0, c0, d0, u0, v0,  a1, b1, c1, d1, u1, v1;
+                a0.load(X0 + i);
+                    a1.load(X0 + i + VEC_SZ);
+                b0.load(X1 + i);
+                    b1.load(X1 + i + VEC_SZ);
+                c0.load(X2 + i);
+                    c1.load(X2 + i + VEC_SZ);
+                u0 = add(a0, b0);
+                    u1 = add(a1, b1);
+                v0 = sub(a0, b0);
+                    v1 = sub(a1, b1);
+                c0 = reduce_to_pm1n(c0, N, Ninv);
+                    c1 = reduce_to_pm1n(c1, N, Ninv);
+                u0 = reduce_to_pm1n(u0, N, Ninv);
+                    u1 = reduce_to_pm1n(u1, N, Ninv);
+                b0 = mulmod2(v0, f1, N, Ninv);
+                    b1 = mulmod2(v1, f1, N, Ninv);
+                v0 = mulmod2(v0, f0, N, Ninv);
+                    v1 = mulmod2(v1, f0, N, Ninv);
+                d0 = sub(c0, v0);
+                    d1 = sub(c1, v1);
+                c0 = fmsub(f2, c0, v0);
+                    c1 = fmsub(f2, c1, v1);
+                a0 = add(c0, u0);
+                    a1 = add(c1, u1);
+                c0 = sub(c0, u0);                
+                    c1 = sub(c1, u1);                
+                c0 = mulmod2(c0, f3, N, Ninv);
+                    c1 = mulmod2(c1, f3, N, Ninv);
+                a0.store(X0 + i);
+                    a1.store(X0 + i + VEC_SZ);
+                b0.store(X1 + i);
+                    b1.store(X1 + i + VEC_SZ);
+                c0.store(X2 + i);
+                    c1.store(X2 + i + VEC_SZ);
+                d0.store(X3 + i);
+                    d1.store(X3 + i + VEC_SZ);
+            }
+
+            return;
+        }
+
+
+
     }
-    else
+
+
+    if (k > 1)
     {
         ulong k1 = k/2;
         ulong k2 = k - k1;
@@ -691,6 +914,111 @@ void fftv2_ctx::ifft_trunc_block(
 
         return;
     }
+
+    if (k == 1)
+    {
+        double* X0 = from_index(I + S*0);
+        double* X1 = from_index(I + S*1);
+
+        packed<double, VEC_SZ> N = p;
+        packed<double, VEC_SZ> Ninv = pinv;
+
+        if (n == 1 && z == 2 && f)
+        {
+            // {x0, x1} = {2*x0 - w*x1, x0 - w*x1}
+            packed<double, VEC_SZ> w = w2s[j];
+            packed<double, VEC_SZ> c = 2.0;
+            for (ulong i = 0; i < blk_sz; i += VEC_SZ)
+            {
+                packed<double, VEC_SZ> u0, u1, v0, v1;
+                u0.load(X0 + i);
+                u1.load(X1 + i);
+                u0 = reduce_to_pm1n(u0, N, Ninv);
+                u1 = mulmod2(u1, w, N, Ninv);
+                v0 = fmsub(c, u0, u1);
+                v1 = sub(u0, u1);
+                v0.store(X0 + i);
+                v1.store(X1 + i);
+            }
+        }
+        else if (n == 1 && z == 2 && !f)
+        {
+            // {x0} = {2*x0 - w*x1}
+            packed<double, VEC_SZ> w = w2s[j];
+            packed<double, VEC_SZ> c = 2.0;
+            for (ulong i = 0; i < blk_sz; i += VEC_SZ)
+            {
+                packed<double, VEC_SZ> u0, u1, v0, v1;
+                u0.load(X0 + i);
+                u1.load(X1 + i);
+                u0 = reduce_to_pm1n(u0, N, Ninv);
+                u1 = mulmod2(u1, w, N, Ninv);
+                v0 = fmsub(c, u0, u1);
+                v0.store(X0 + i);
+            }
+        }
+        else if (n == 1 && z != 2 && f)
+        {
+            // {x0, x1} = {2*x0, x0}
+            for (ulong i = 0; i < blk_sz; i += VEC_SZ)
+            {
+                packed<double, VEC_SZ> u0, v0, v1;
+                u0.load(X0 + i);
+                u0 = reduce_to_pm1n(u0, N, Ninv);
+                v0 = add(u0, u0);
+                v1 = u0;
+                v0.store(X0 + i);
+                v1.store(X1 + i);
+            }
+        }
+        else if (n == 1 && z != 2 && !f)
+        {
+            // {x0} = {2*x0}
+            for (ulong i = 0; i < blk_sz; i += VEC_SZ)
+            {
+                packed<double, VEC_SZ> u0, v0;
+                u0.load(X0 + i);
+                u0 = reduce_to_pm1n(u0, N, Ninv);
+                v0 = add(u0, u0);
+                v0.store(X0 + i);
+            }
+        }
+        else if (n == 0 && z == 2 && f)
+        {
+            // {x0} = {(x0 + w*x1)/2}
+            packed<double, VEC_SZ> w = w2s[j];
+            packed<double, VEC_SZ> c = 0.5 - 0.5*p;
+            for (ulong i = 0; i < blk_sz; i += VEC_SZ)
+            {
+                packed<double, VEC_SZ> u0, u1;
+                u0.load(X0 + i);
+                u1.load(X1 + i);
+                u1 = mulmod2(u1, w, N, Ninv);
+                u0 = mulmod2(add(u0, u1), c, p, pinv);
+                u0.store(X0 + i);
+            }
+        }
+        else if (n == 0 && z != 2 && f)
+        {
+            // {x0} = {x0/2}
+            packed<double, VEC_SZ> w = w2s[j];
+            packed<double, VEC_SZ> c = 0.5 - 0.5*p;
+            for (ulong i = 0; i < blk_sz; i += VEC_SZ)
+            {
+                packed<double, VEC_SZ> u0, u1;
+                u0.load(X0 + i);
+                u0 = mulmod2(u0, c, p, pinv);
+                u0.store(X0 + i);
+            }
+        }
+        else
+        {
+            std::cout << "ooops" << std::endl;
+            std::abort();
+        }
+
+        return;
+    }
 }
 
 void fftv2_ctx::ifft_trunc(
@@ -713,7 +1041,7 @@ std::cout << "z = " << z << ",  ";
 std::cout << "n = " << n << ",  ";
 std::cout << "f = " << f << std::endl;
 */
-    if (k > 1)
+    if (k > 2)
     {
         ulong k1 = k/2;
         ulong k2 = k - k1;
@@ -747,32 +1075,8 @@ std::cout << "f = " << f << std::endl;
         return;
     }
 
-    if (k == 3)
-    {
-                   ifft_base(I+S*0, 8*j+0);
-        if (n > 1) ifft_base(I+S*1, 8*j+1);
-        if (n > 2) ifft_base(I+S*2, 8*j+2);
-        if (n > 3) ifft_base(I+S*3, 8*j+3);
-        if (n > 4) ifft_base(I+S*4, 8*j+4);
-        if (n > 5) ifft_base(I+S*5, 8*j+5);
-        if (n > 6) ifft_base(I+S*6, 8*j+6);
-        if (n > 7) ifft_base(I+S*7, 8*j+7);
-        ifft_trunc_block(I, S, 3, j, z, n, f);
-        if (f) ifft_trunc(I + S*n, S, 0, 8*j+n, 1, 0, f);
-        
-    }
     if (k == 2)
     {
-        // real:
-        // k1 = 2
-        // k2 = LG_BLK_SZ
-        // l2 = BLK_SZ
-        // n1 = n,  n2 = 0
-        // z1 = z,  z2 = 0
-        // fp = f
-        // z2p = BLK_SZ
-        // m = mp = 0
-
                    ifft_base(I+S*0, 4*j+0);
         if (n > 1) ifft_base(I+S*1, 4*j+1);
         if (n > 2) ifft_base(I+S*2, 4*j+2);
@@ -796,99 +1100,7 @@ std::cout << "f = " << f << std::endl;
 }
 
 
-
-void fftv2_ctx::ifft_trunc_debug(
-    ulong I, // starting index
-    ulong S, // stride
-    ulong k, // transform length 2^(k)
-    ulong j,
-    ulong z,   // actual trunc is z
-    ulong n,   // actual trunc is n
-    bool f)
-{
-    assert(n <= z);
-    assert(1 <= z && z <= pow2(k));
-    assert(1 <= n+f && n+f <= pow2(k));
-    if (k < 1)
-    {
-        return;
-    }
-    else if (k == 1)
-    {
-        double w = w2s[j];
-        ulong mask = saturate_bits(j);
-        double W  = ((j) == 0) ? -w2s[0] : w2s[(  (j)  )^(mask>>1)];
-
-        assert(-1 == mulmod2(w, W, p, pinv));
-
-//std::cout << "z = " << z << ", n = " << n << ", f = " << f << std::endl;
-
-        if (n == 2)
-        {
-            double u = get_index(I + S*0);
-            double v = get_index(I + S*1);
-            set_index(I + S*0, reduce_to_pm1n(u + v, p, pinv));
-            set_index(I + S*1, mulmod2(v - u, W, p, pinv));
-        }
-        else if (n == 1)
-        {
-            double u = reduce_to_pm1n(get_index(I + S*0), p, pinv);
-            double v = z == 2 ? get_index(I + S*1) : 0.0;
-            set_index(I+S*0, 2*u - mulmod2(v, w, p, pinv));
-            if (f) set_index(I+S*1, u - mulmod2(v, w, p, pinv));
-        }
-        else if (n == 0)
-        {
-            assert(f);
-            double u = get_index(I + S*0);
-            double v = z == 2 ? get_index(I + S*1) : 0.0;
-            set_index(I+S*0, mulmod2((u + mulmod2(v, w, p, pinv)), (0.5-0.5*p), p, pinv));
-        }
-        else
-        {
-            std::cout << "ooops" << std::endl;
-            std::abort();
-        }
-    }
-    else
-    {
-        ulong k1 = k/2;
-        ulong k2 = k - k1;
-
-        ulong l2 = ulong(1) << k2;
-        ulong n1 = n >> k2;
-        ulong n2 = n & (l2 - 1);
-        ulong z1 = z >> k2;
-        ulong z2 = z & (l2 - 1);
-        bool fp = n2 + f > 0;
-        ulong z2p = std::min(l2, z);
-        ulong m = std::min(n2, z2);
-        ulong mp = std::max(n2, z2);
-
-        // complete rows
-        for (ulong b = 0; b < n1; b++)
-            ifft_trunc_debug(I + b*(S << k2), S, k2, (j << k1) + b, l2, l2, false);
-
-        // rightmost columns
-        for (ulong a = n2; a < z2p; a++)
-            ifft_trunc_debug(I + a*S, S << k2, k1, j, z1 + (a < mp), n1, fp);
-
-        // last partial row
-        if (fp)
-            ifft_trunc_debug(I + n1*(S << k2), S, k2, (j << k1) + n1, z2p, n2, f);
-
-        // leftmost columns
-        for (ulong a = 0; a < n2; a++)
-            ifft_trunc_debug(I + a*S, S << k2, k1, j, z1 + (a < m), n1 + 1, false);
-
-        return;
-    }
-}
-
-
 ///////////////////////// mpn_mul //////////////////////////////////////
-
-
 
 
 // pointwise mul of self with b and m

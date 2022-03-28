@@ -21,6 +21,8 @@
 #include "timing.h"
 #include <immintrin.h>
 
+ulong hits[9][9];
+
 #include "packed.h"
 #include "v1.cpp"
 #include "v2.cpp"
@@ -80,51 +82,45 @@ void SleepUS(ulong us) {
 
 int main(int argc, char *argv[])
 {
-//std::cout.precision(17);
+#if 0
+    test_v2_trunc(10, 14);
+    profile_v2_trunc(17, 22);
+    test_v2_mul(100000, 1000);
+    profile_v2_mul(10000000, false);
+#else
+    test_v2_trunc(10, 14);
+
+    for (int i = 0; i < 9; i++)
+    for (int j = 0; j < 9; j++)
+        hits[i][j] = 0;
+
+    profile_v2_trunc(16, 27);
+
+    for (int i = 0; i < 9; i++)
+    for (int j = 0; j < 9; j++)
+        if (hits[i][j] != 0)
+            std::cout << "[" << i << "][" << j << "] = " << hits[i][j] << std::endl;
+
+    test_v2_mul(100000, 100);
+
+    for (int i = 0; i < 9; i++)
+    for (int j = 0; j < 9; j++)
+        hits[i][j] = 0;
+
+
+    profile_v2_mul(1000000, false);
+
+    for (int i = 0; i < 9; i++)
+    for (int j = 0; j < 9; j++)
+        if (hits[i][j] != 0)
+            std::cout << "[" << i << "][" << j << "] = " << hits[i][j] << std::endl;
+
+
+#endif
 
     ulong maxlen = 5700000;
 
-#if 0
-    for (ulong i = 8; i <= 12; i++)
-        test_v2(i);
 
-    {
-        mpn_ctx_v2 Q(0x0003f00000000001);
-
-        for (ulong an = 100; an <= 400; an += 50)
-        for (ulong bn = 100; bn <= 400; bn += 50)
-        {
-std::cout << "testing an = " << an << ", bn = " << bn << std::endl;
-            test_mpn_mul_v2(Q, an, bn);
-        }
-
-        test_mpn_mul_v2(Q, maxlen, maxlen);
-
-        for (ulong an = maxlen/2; an <= maxlen; an += maxlen/2)
-        for (ulong bn = maxlen/2; bn <= an; bn += maxlen/2)
-        {
-std::cout << "testing an = " << an << ", bn = " << bn << std::endl;
-            test_mpn_mul_v2(Q, an, bn);
-        }
-    }
-#endif
-
-    {
-        for (int i = 0; i < 5; i++)
-        for (int j = 0; j < 5; j++)
-            hits[i][j] = 0;
-
-        test_v2_trunc(10, 14);
-        profile_v2_trunc(17, 22);
-
-        for (int i = 0; i < 5; i++)
-        for (int j = 0; j < 5; j++)
-            if (hits[i][j] != 0)
-                std::cout << "hits[" << i <<"][" << j << "]: " << hits[i][j] << std::endl;
-
-        test_v2_mul(100000, 1000);
-        profile_v2_mul(10000000, false);
-    }
 
 #if 0
 std::cout << std::endl;

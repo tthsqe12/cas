@@ -65,6 +65,10 @@ std::ostream& operator<<(std::ostream& o, const PD4& x)
     return o;
 }
 
+inline double blendv(double a, double b, bool c) {
+    return c ? b : a;
+}
+
 inline double blendv(double a, double b, double c) {
     return c >= 0 ? a : b;
 }
@@ -87,6 +91,11 @@ inline double neg(double a) {
 
 inline PD4 neg(PD4 a) {
     return _mm256_sub_pd(_mm256_setzero_pd(), a.data);
+}
+
+inline PD4 abs(PD4 a) {
+    __m256d mask = _mm256_castsi256_pd(_mm256_set1_epi64x(0x7fffffffffffffff));
+    return _mm256_and_pd(a.data, mask);
 }
 
 inline double add(double a, double b) {
@@ -163,19 +172,19 @@ inline PU4 convert_limited<PU4>(PD4 a) {
     return _mm256_xor_si256(_mm256_castpd_si256(x), _mm256_castpd_si256(t));
 }
 
-inline PD4 operator>=(PD4& a, PD4 b) {
+inline PD4 operator>=(PD4 a, PD4 b) {
    return _mm256_cmp_pd(a.data, b.data, _CMP_GE_OQ);
 }
 
-inline PD4 operator>(PD4& a, PD4 b) {
+inline PD4 operator>(PD4 a, PD4 b) {
    return _mm256_cmp_pd(a.data, b.data, _CMP_GT_OQ);
 }
 
-inline PD4 operator<=(PD4& a, PD4 b) {
+inline PD4 operator<=(PD4 a, PD4 b) {
    return _mm256_cmp_pd(a.data, b.data, _CMP_LE_OQ);
 }
 
-inline PD4 operator<(PD4& a, PD4 b) {
+inline PD4 operator<(PD4 a, PD4 b) {
    return _mm256_cmp_pd(a.data, b.data, _CMP_LT_OQ);
 }
 
@@ -262,9 +271,41 @@ template <typename T> inline T reduce_to_0n(T a, T n, T ninv) {
     return reduce_pm1no_to_0n(reduce_to_pm1no(a, n, ninv), n);
 }
 
-// [0,n] -> (-n/2, n/2]
+// [0,n] -> [-n/2, n/2]
 double reduce_0n_to_pmhn(double a, double n) {
     return a > n*0.5 ? a-n : a;
+}
+
+template <typename T>
+T reduce_0n_to_pmhn(T a, T n, T half_n) {
+    return blendv(a, sub(a, n), a > half_n);
+}
+
+
+// [-n,n] -> [-n/2, n/2]
+double reduce_pm1n_to_pmhn(double a, double n) {
+    if (a > 0.5*n)
+        return a - n;
+    else if (a < -0.5*n)
+        return a + n;
+    else
+        return a;
+}
+
+template <typename T>
+T reduce_pm1n_to_pmhn(T a, T n, T half_n) {
+    T t = blendv(n, neg(n), a);
+    a = blendv(a, sub(a, t), abs(a) > half_n);
+    return a;
+
+//    a = blendv(a, add(a,n), a);
+//    a = blendv(sub(a,n), a, sub(a, half_n));
+//    return a;
+
+//    a = blendv(a, add(a, n), a);
+//    T t = sub(a, n);
+//    a =  blendv(t, a, add(t, a));
+//    return a;
 }
 
 

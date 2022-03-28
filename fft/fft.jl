@@ -1,5 +1,5 @@
 using Nemo
-L = 5
+L = 3
 Qw,w = PolynomialRing(QQ, "x")
 K,w = NumberField(w^(2^(L-1))+1, "w")
 R,X = PolynomialRing(K, vcat([Symbol(:x,i) for i in 0:2^L-1]))
@@ -73,15 +73,18 @@ function tfft!(x::Vector, I::Int, S::Int, k::Int, j::Int, itrunc::Int, otrunc::I
 end
 
 #=
+L = 2^k
 suppose a[z] = ... = a[L-1] = 0
 n <= z
 1 <= n + f <= L
 IFFT(L, zeta, z, n, f; ah[0], ..., ah[n-1], L*a[n], ..., L*a[z-1])
-returns with (L*a[0], ..., L*a[n-1])            if f = 0
-             (L*a[0], ..., L*a[n-1], ah[n-1])   if f = 1
+returns with (L*a[0], ..., L*a[n-1])        if f = 0
+             (L*a[0], ..., L*a[n-1], ah[n]) if f = 1
+
+    ifft_trunc_formula generates the input -> output map as a n+f by z matrix.
+    Special case for L = 2:
 
         Harvey                                          !!! Here !!!
-if L = 2
         ah[0] =       a[0] + a[1]                      ah[0] = a[0] + w*a[1]
         ah[1] = zeta*(a[0] - a[1])                     ah[1] = a[0] - w*a[1]
 
@@ -188,5 +191,68 @@ for trunc in 1:2^L
         @assert x[1+i] == 2^L*X[1+i]
     end
 end
+
+
+function ifft_trunc_formula(k::Int, z::Int, n::Int, f::Bool)
+    @assert n <= z
+    @assert 1 <= z <= 2^k
+    @assert 1 <= n + f <= 2^k
+    l = 2^k
+
+    local Qr,r = PolynomialRing(QQ, "r")
+    local K,r = NumberField(r^(2^(k-1)) + 1, "r")
+    local Rwr,w = PolynomialRing(K, "w")
+    r = Rwr(r)
+    local F = FractionField(Rwr)
+    r = F(r)
+    w = F(w)
+
+    M = zero_matrix(F, l, l)
+    for i in 0:n-1, j in 0:l-1
+        M[1+i,1+j] = (r^revbits(i,k)*w)^j
+    end
+    for i in n:l-1
+        M[1+i,1+i] = l
+    end
+
+    N = zero_matrix(F, n+f, l)
+    for i in 0:n-1
+        N[1+i,1+i] = l
+    end
+    if f
+        for j in 0:l-1
+            N[1+n,1+j] = (r^revbits(n,k)*w)^j
+        end
+    end
+
+    println("\nk = $k, z = $z, n = $n, f = $f")
+    show(stdout, "text/plain", (N*inv(M))[:, 1:z])
+    println()
+    nothing
+end
+
+println("\n-------- radix 2 --------------------")
+ifft_trunc_formula(1, 2,2,false)
+ifft_trunc_formula(1, 2,1,true)
+ifft_trunc_formula(1, 2,1,false)
+ifft_trunc_formula(1, 1,1,true)
+ifft_trunc_formula(1, 1,1,false)
+ifft_trunc_formula(1, 2,0,true)
+ifft_trunc_formula(1, 1,0,true)
+
+println("\n-------- radix 4 (r^2 = -1) ---------")
+ifft_trunc_formula(2, 2,2,true)
+ifft_trunc_formula(2, 3,3,false)
+ifft_trunc_formula(2, 3,3,true)
+ifft_trunc_formula(2, 4,0,true)
+ifft_trunc_formula(2, 4,1,false)
+ifft_trunc_formula(2, 4,1,true)
+ifft_trunc_formula(2, 4,2,false)
+ifft_trunc_formula(2, 4,2,true)
+ifft_trunc_formula(2, 4,3,false)
+ifft_trunc_formula(2, 4,3,true)
+
+
+
 
 nothing

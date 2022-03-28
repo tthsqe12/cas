@@ -75,11 +75,30 @@ std::cout << "------------- testing fft --------------- " << std::endl;
     flint_randclear(state);
 }
 
+void display_dpoints(std::vector<double> v) {
+    std::cout << "{";
+    for (ulong i = 0; i < v.size(); i += 2)
+    {
+        if (i > 0)
+            std::cout << ", ";
+        std::cout << "(" << format_fixed(v[i+0], 2, 2) << ", "
+                         << format_fixed(v[i+1], 2, 2) << ")";
+    }
+    std::cout << "}" << std::endl;
+}
+
 void profile_v2_trunc(ulong minL, ulong maxL)
 {
     double tmul = 10000000;
     timeit_t timer;
     fftv2_ctx ctx(0x03f00000000001ULL);
+
+    std::vector<double>  fft_trunc_times;
+    std::vector<double> ifft_trunc_times;
+    std::vector<double>  fft_times;
+    std::vector<double> ifft_times;
+
+    double time;
 
 std::cout << "------------- profiling fft --------------- " << std::endl;
 std::cout << "*** reports time and (time/(n*log(n)) where n = truncated length ***" << std::endl;
@@ -89,14 +108,27 @@ std::cout << "*** reports time and (time/(n*log(n)) where n = truncated length *
     {
 std::cout << "-- depth " << format_fixed(L, 2) << " -- | --  fft  -- | --  ifft  -- |" << std::endl;
 
+        timeit_start(timer);
         ctx.set_depth(L);
+        timeit_stop(timer);
+        std::cout << "precomp: "
+                  << format_fixed(timer->wall, 4)
+                  << " ("
+                  << format_fixed(timer->wall*tmul/pow2(L), 2, 2)
+                  << ")"
+                  << std::endl;
+
         ctx.set_data(new double[ctx.data_size()]);
+
+        ulong nreps = 1;
+        if (L < 24)
+            nreps <<= (25 - L)/2;
 
         // do 1/2*2^L < otrunc <= 2^L
         ulong otrunc = pow2(L-1);
         while (true)
         {
-            otrunc = round_up(otrunc + pow2(L-4), ctx.blk_sz);
+            otrunc = round_up(otrunc + pow2(std::max(L, ulong(5))-5), ctx.blk_sz);
             if (otrunc > pow2(L))
                 break;
 
@@ -107,35 +139,51 @@ std::cout << "-- depth " << format_fixed(L, 2) << " -- | --  fft  -- | --  ifft 
                 ctx.set_index(i, i+1);
 
             timeit_start(timer);
-            ctx.fft_trunc(itrunc, otrunc);
+            for (ulong i = 0; i < nreps; i++)
+                ctx.fft_trunc(itrunc, otrunc);
             timeit_stop(timer);
+            time = double(timer->wall)/nreps;
+
             double l = log2(otrunc);
             std::cout << "trunc 2^"
                       << format_fixed(l, 2, 2)
                       << ": "
-                      << format_fixed(timer->wall, 5)
+                      << format_fixed(time, 5)
                       << " ("
-                      << format_fixed(timer->wall*tmul/(l*otrunc), 1, 2)
+                      << format_fixed(time*tmul/(l*otrunc), 1, 2)
                       << ")  | "
                       << std::flush;
 
+            fft_trunc_times.push_back(l);
+            fft_trunc_times.push_back(time*tmul/(l*otrunc));
+
+
             timeit_start(timer);
-            ctx.ifft_trunc(otrunc);
+            for (ulong i = 0; i < nreps; i++)
+                ctx.ifft_trunc(otrunc);
             timeit_stop(timer);
-            std::cout << format_fixed(timer->wall, 5)
+            time = double(timer->wall)/nreps;
+
+            std::cout << format_fixed(time, 5)
                       << " ("
-                      << format_fixed(timer->wall*tmul/(l*otrunc), 1, 2)
+                      << format_fixed(time*tmul/(l*otrunc), 1, 2)
                       << ") |"
                       << std::endl;
 
-            double m = reduce_0n_to_pmhn(nmod_pow_ui(2, L, ctx.mod), ctx.p);
-            for (ulong i = 0; i < itrunc; i++)
+            ifft_trunc_times.push_back(l);
+            ifft_trunc_times.push_back(time*tmul/(l*otrunc));
+
+            if (nreps == 1)
             {
-                if (reduce_to_0n(ctx.get_index(i), ctx.p, ctx.pinv) !=
-                    reduce_to_0n(mulmod2(i+1, m, ctx.p, ctx.pinv), ctx.p, ctx.pinv))
+                double m = reduce_0n_to_pmhn(nmod_pow_ui(2, L, ctx.mod), ctx.p);
+                for (ulong i = 0; i < itrunc; i++)
                 {
-                    std::cout << "oops! error at index " << i << std::endl;
-                    std::abort();
+                    if (reduce_to_0n(ctx.get_index(i), ctx.p, ctx.pinv) !=
+                        reduce_to_0n(mulmod2(i+1, m, ctx.p, ctx.pinv), ctx.p, ctx.pinv))
+                    {
+                        std::cout << "oops! error at index " << i << std::endl;
+                        std::abort();
+                    }
                 }
             }
         }
@@ -144,29 +192,50 @@ std::cout << "-- depth " << format_fixed(L, 2) << " -- | --  fft  -- | --  ifft 
             ctx.set_index(i, i+1);
 
         timeit_start(timer);
-        ctx.fft();
+        for (ulong i = 0; i < nreps; i++)
+            ctx.fft();
         timeit_stop(timer);
+        time = double(timer->wall)/nreps;
         double l = L;
         std::cout << " full 2^"
                   << format_fixed(l, 2)
                   << "   : "
-                  << format_fixed(timer->wall, 5)
+                  << format_fixed(time, 5)
                   << " ("
-                  << format_fixed(timer->wall*tmul/(l*pow2(L)), 1, 2)
+                  << format_fixed(time*tmul/(l*pow2(L)), 1, 2)
                   << ")  | "
                   << std::flush;
 
+        fft_times.push_back(l);
+        fft_times.push_back(time*tmul/(l*pow2(L)));
+
         timeit_start(timer);
-        ctx.ifft();
+        for (ulong i = 0; i < nreps; i++)
+            ctx.ifft();
         timeit_stop(timer);
-        std::cout << format_fixed(timer->wall, 5)
+        time = double(timer->wall)/nreps;
+        std::cout << format_fixed(time, 5)
                   << " ("
-                  << format_fixed(timer->wall*tmul/(l*pow2(L)), 1, 2)
+                  << format_fixed(time*tmul/(l*pow2(L)), 1, 2)
                   << ") |"
                   << std::endl;
 
+        ifft_times.push_back(l);
+        ifft_times.push_back(time*tmul/(l*pow2(L)));
+
         delete[] ctx.release_data();
     }
+
+#if 0
+    std::cout << "fft_trunc: " << std::endl;
+    display_dpoints(fft_trunc_times);
+    std::cout << "ifft_trunc: " << std::endl;
+    display_dpoints(ifft_trunc_times);
+    std::cout << "fft: " << std::endl;
+    display_dpoints(fft_times);
+    std::cout << "ifft: " << std::endl;
+    display_dpoints(ifft_times);
+#endif
 }
 
 
@@ -248,7 +317,7 @@ void profile_v2_mul(ulong max_len, bool use_flint)
 
     for (ulong zn = 100000; zn <= max_len; zn += 1 + zn*(5 + n_randint(state, 8))/64)
     {
-        std::cout << format_fixed(zn, n_sizeinbase(max_len,10)) << ": ";
+        std::cout << format_fixed(zn, n_sizeinbase(max_len,10)) << ":";
 
         double ratio_sum = 0;
         double ratio_min = 1000000;
@@ -257,7 +326,7 @@ void profile_v2_mul(ulong max_len, bool use_flint)
         ulong nreps = 8;
         for (ulong rep = 0; rep < nreps; rep++)
         {
-            ulong an = zn/2 + (rep*zn)/(4*nreps);
+            ulong an = (zn+1)/2 + (rep*zn)/(4*nreps);
             if (an >= zn)
                 break;
 
@@ -270,6 +339,15 @@ void profile_v2_mul(ulong max_len, bool use_flint)
             mpn_mul_v2p1(Q, z, a, an, b, bn);
             timeit_stop(timer);
             ulong new_time = std::max(slong(1), timer->wall);
+
+            if (z[0]    !=  ulong(1) ||
+                z[bn-1] !=  ulong(bn == 1 ? 1 : 0) ||
+                z[bn]   != -ulong(an == bn ? 2 : 1) ||
+                z[zn-1] != -ulong(bn == 1 ? 2 : 1))
+            {
+                std::cout << "mpn_mul error" << std::endl;
+                std::abort();
+            }
 
             timeit_start(timer);
             if (use_flint)
