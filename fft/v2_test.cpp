@@ -383,3 +383,221 @@ void profile_v2_mul(ulong max_len, bool use_flint)
     delete[] data;
 }
 
+
+void profile_flint_trunc_(ulong minL, ulong maxL)
+{
+    double tmul = 5000;
+    timeit_t timer;
+
+    std::vector<double>  fft_trunc_times;
+    std::vector<double> ifft_trunc_times;
+
+    double time;
+
+    flint_rand_t state;
+    flint_randinit(state);
+    _flint_rand_init_gmp(state);
+
+
+std::cout << "------------- profiling flint fft --------------- " << std::endl;
+std::cout << "*** reports time and (time/(n*log(n)) where n = truncated length ***" << std::endl;
+
+    maxL = std::max(maxL, ulong(7));
+    for (ulong L = minL; L <= maxL; L++)
+    {
+std::cout << "-- depth " << format_fixed(L, 2) << " -- | --  fft  -- | --  ifft  -- |" << std::endl;
+
+        ulong nreps = 1;
+        if (L < 16)
+            nreps <<= (16 - L);
+
+        // do 1/2*2^L < trunc <= 2^L
+        ulong trunc = pow2(L-1);
+        while (true)
+        {
+            trunc = round_up(trunc + pow2(std::max(L, ulong(5))-5), BLK_SZ);
+            if (trunc > pow2(L))
+                break;
+
+            ulong n = pow2(L - 1);
+            ulong w = pow2(maxL - L);
+            ulong limbs = pow2(maxL - 1)/GMP_LIMB_BITS;
+            mp_size_t size = limbs + 1;
+
+            mp_size_t i;
+            mp_limb_t * ptr;
+            mp_limb_t ** ii, *t1, *t2;
+
+            ii = (mp_limb_t**) flint_malloc((2*(n + n*size) + 2*size)*sizeof(mp_limb_t));
+            for (i = 0, ptr = ((mp_limb_t *) ii) + 2*n; i < 2*n; i++, ptr += size) 
+            {
+                ii[i] = ptr;
+                random_fermat(ii[i], state, limbs);
+            }
+            t1 = ptr;
+            t2 = t1 + size;
+   
+            for (i = 0; i < 2*n; i++)
+               mpn_normmod_2expp1(ii[i], limbs);
+
+
+    
+            timeit_start(timer);
+            fft_truncate(ii, n, w, &t1, &t2, trunc);
+            timeit_stop(timer);
+            time = double(timer->wall)/nreps;
+            double l = log2(trunc);
+            std::cout << "trunc 2^"
+                      << format_fixed(l, 2, 2)
+                      << ": "
+                      << format_fixed(time, 5)
+                      << " ("
+                      << format_fixed(time*tmul/(l*trunc), 3, 2)
+                      << ")  | "
+                      << std::flush;
+
+            fft_trunc_times.push_back(l);
+            fft_trunc_times.push_back(time*tmul/(l*trunc));
+
+            timeit_start(timer);
+            ifft_truncate(ii, n, w, &t1, &t2, trunc);
+            timeit_stop(timer);
+            time = double(timer->wall)/nreps;
+            std::cout << format_fixed(time, 5)
+                      << " ("
+                      << format_fixed(time*tmul/(l*trunc), 3, 2)
+                      << ")  | "
+                      << std::flush;
+
+            ifft_trunc_times.push_back(l);
+            ifft_trunc_times.push_back(time*tmul/(l*trunc));
+
+            flint_free(ii);
+
+            std::cout << std::endl;
+        }
+    }
+
+    flint_randclear(state);
+
+
+    std::cout << "fft_trunc: " << std::endl;
+    display_dpoints(fft_trunc_times);
+    std::cout << "ifft_trunc: " << std::endl;
+    display_dpoints(ifft_trunc_times);
+}
+
+
+
+
+void profile_flint_trunc(ulong minL, ulong maxL)
+{
+    double tmul = 10000;
+    timeit_t timer;
+
+    std::vector<double>  fft_trunc_times;
+    std::vector<double> ifft_trunc_times;
+
+    double time;
+
+    flint_rand_t state;
+    flint_randinit(state);
+    _flint_rand_init_gmp(state);
+
+
+std::cout << "------------- profiling flint fft --------------- " << std::endl;
+std::cout << "*** reports time and (time/(n*log(n)) where n = truncated length ***" << std::endl;
+
+    maxL = std::max(maxL, ulong(8));
+    minL = std::max(minL, ulong(6));
+    for (ulong L = minL; L <= maxL; L++)
+    {
+std::cout << "-- depth " << format_fixed(L, 2) << " -- | --  fft  -- | --  ifft  -- |" << std::endl;
+
+        ulong nreps = 1;
+        if (L < 16)
+            nreps <<= (16 - L);
+
+        // do 1/2*2^L < trunc <= 2^L
+        ulong trunc = pow2(L-1);
+        while (true)
+        {
+            trunc = round_up(trunc + pow2(std::max(L, ulong(5))-5), BLK_SZ);
+            if (trunc > pow2(L))
+                break;
+
+            ulong depth = L - 2;
+            ulong n = pow2(depth);
+            ulong n1 = pow2(depth/2);
+            ulong w = pow2(maxL - 2 - depth);
+            ulong limbs = (n*w)/GMP_LIMB_BITS;
+
+            mp_size_t size = limbs + 1;
+
+            mp_size_t i;
+            mp_limb_t * ptr;
+            mp_limb_t ** ii, ** jj, * t1, * t2, * s1;
+
+            trunc = 2*n1*((trunc + 2*n1 - 1)/(2*n1));
+
+
+            ii = (mp_limb_t**) flint_malloc((4*(n + n*size) + 3*size)*sizeof(mp_limb_t));
+            for (i = 0, ptr = (mp_limb_t *) ii + 4*n; i < 4*n; i++, ptr += size) 
+            {
+                ii[i] = ptr;
+                random_fermat(ii[i], state, limbs);
+            }
+            t1 = ptr;
+            t2 = t1 + size;
+            s1 = t2 + size;
+   
+            for (i = 0; i < 4*n; i++)
+               mpn_normmod_2expp1(ii[i], limbs);
+
+            timeit_start(timer);
+            for (ulong ri = 0; ri < nreps; ri++)
+                fft_mfa_truncate_sqrt2(ii, n, w, &t1, &t2, &s1, n1, trunc);
+            timeit_stop(timer);
+            time = double(timer->wall)/nreps;
+            double l = log2(trunc);
+            std::cout << "trunc 2^"
+                      << format_fixed(l, 2, 2)
+                      << ": "
+                      << format_fixed(time, 5)
+                      << " ("
+                      << format_fixed(time*tmul/(l*trunc), 3, 2)
+                      << ")  | "
+                      << std::flush;
+
+            fft_trunc_times.push_back(l);
+            fft_trunc_times.push_back(time*tmul/(l*trunc));
+
+            timeit_start(timer);
+            for (ulong ri = 0; ri < nreps; ri++)
+                ifft_mfa_truncate_sqrt2(ii, n, w, &t1, &t2, &s1, n1, trunc);
+            timeit_stop(timer);
+            time = double(timer->wall)/nreps;
+            std::cout << format_fixed(time, 5)
+                      << " ("
+                      << format_fixed(time*tmul/(l*trunc), 3, 2)
+                      << ")  | "
+                      << std::flush;
+
+            ifft_trunc_times.push_back(l);
+            ifft_trunc_times.push_back(time*tmul/(l*trunc));
+
+            flint_free(ii);
+
+            std::cout << std::endl;
+        }
+    }
+
+    flint_randclear(state);
+
+
+    std::cout << "fft_trunc: " << std::endl;
+    display_dpoints(fft_trunc_times);
+    std::cout << "ifft_trunc: " << std::endl;
+    display_dpoints(ifft_trunc_times);
+}
+

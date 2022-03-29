@@ -87,7 +87,7 @@ int main(int argc, char *argv[])
     profile_v2_trunc(17, 22);
     test_v2_mul(100000, 1000);
     profile_v2_mul(10000000, false);
-#else
+#elseif 0
     test_v2_trunc(10, 14);
 
     for (int i = 0; i < 9; i++)
@@ -115,6 +115,8 @@ int main(int argc, char *argv[])
         if (hits[i][j] != 0)
             std::cout << "[" << i << "][" << j << "] = " << hits[i][j] << std::endl;
 
+#else
+    profile_flint_trunc(12, 18);
 
 #endif
 
