@@ -65,6 +65,8 @@ std::ostream& operator<<(std::ostream& o, const PD4& x)
     return o;
 }
 
+
+/* movement */
 inline double blendv(double a, double b, bool c) {
     return c ? b : a;
 }
@@ -77,6 +79,33 @@ inline PD4 blendv(PD4 a, PD4 b, PD4 c) {
     return _mm256_blendv_pd(a.data, b.data, c.data);
 }
 
+template <int i0, int i1, int i2, int i3>
+inline PD4 blend(PD4 a, PD4 b) {
+    return _mm256_blend_pd(a.data, b.data, i0 + 2*(i1 + 2*(i2 + 2*i3)));
+}
+
+inline PD4 unpacklo(PD4 a, PD4 b) {
+    return _mm256_unpacklo_pd(a.data, b.data);
+}
+
+inline PD4 unpackhi(PD4 a, PD4 b) {
+    return _mm256_unpackhi_pd(a.data, b.data);
+}
+
+inline PD4 insertf128(PD4 a, PD4 b, int i) {
+    return _mm256_insertf128_pd(a.data, _mm256_castpd256_pd128(b.data), i);
+}
+
+inline PD4 permute2f128(PD4 a, PD4 b, int i) {
+    return _mm256_permute2f128_pd(a.data, b.data, i);
+}
+
+template <int i0, int i1, int i2, int i3>
+inline PD4 permute(PD4 a) {
+    return _mm256_permute4x64_pd(a.data, i0 + 4*(i1 + 4*(i2 + 4*i3)));
+}
+
+/* arithmetic */
 inline double round(double a) {
     return std::rint(a);
 }
@@ -112,6 +141,10 @@ inline double sub(double a, double b) {
 
 inline PD4 sub(PD4 a, PD4 b) {
     return _mm256_sub_pd(a.data, b.data);
+}
+
+inline PD4 addsub(PD4 a, PD4 b) {
+    return _mm256_addsub_pd(a.data, b.data);
 }
 
 inline double mul(double a, double b) {

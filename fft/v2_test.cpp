@@ -315,6 +315,9 @@ void profile_v2_mul(ulong max_len, bool use_flint)
     for (ulong i = 0; i < 2*max_len; i++)
         data[i] = -ulong(1);
 
+
+std::cout << "output size       more blanced mul                               less balanced mul               | min  avg  max" << std::endl;
+
     for (ulong zn = 100000; zn <= max_len; zn += 1 + zn*(5 + n_randint(state, 8))/64)
     {
         std::cout << format_fixed(zn, n_sizeinbase(max_len,10)) << ":";
@@ -323,10 +326,10 @@ void profile_v2_mul(ulong max_len, bool use_flint)
         double ratio_min = 1000000;
         double ratio_max = 0;
 
-        ulong nreps = 8;
-        for (ulong rep = 0; rep < nreps; rep++)
+        ulong breps = 8;
+        for (ulong brep = 0; brep < breps; brep++)
         {
-            ulong an = (zn+1)/2 + (rep*zn)/(4*nreps);
+            ulong an = (zn+1)/2 + (brep*zn)/(4*breps);
             if (an >= zn)
                 break;
 
@@ -335,10 +338,13 @@ void profile_v2_mul(ulong max_len, bool use_flint)
             ulong* a = data;
             ulong* b = data + an;
 
+            ulong nreps = 1 + 2000000/zn;
+
             timeit_start(timer);
-            mpn_mul_v2p1(Q, z, a, an, b, bn);
+            for (ulong nrep = 0; nrep < nreps; nrep++)
+                mpn_mul_v2p1(Q, z, a, an, b, bn);
             timeit_stop(timer);
-            ulong new_time = std::max(slong(1), timer->wall);
+            double new_time = std::max(1.0, double(timer->wall))/nreps;
 
             if (z[0]    !=  ulong(1) ||
                 z[bn-1] !=  ulong(bn == 1 ? 1 : 0) ||
@@ -351,13 +357,15 @@ void profile_v2_mul(ulong max_len, bool use_flint)
 
             timeit_start(timer);
             if (use_flint)
-                flint_mpn_mul_fft_main(z, a, an, b, bn);
+                for (ulong nrep = 0; nrep < nreps; nrep++)
+                    flint_mpn_mul_fft_main(z, a, an, b, bn);
             else
-                mpn_mul(z, a, an, b, bn);
+                for (ulong nrep = 0; nrep < nreps; nrep++)
+                    mpn_mul(z, a, an, b, bn);
             timeit_stop(timer);
-            ulong old_time = std::max(slong(1), timer->wall);
+            double old_time = std::max(1.0, double(timer->wall))/nreps;
 
-            double ratio = double(old_time)/double(new_time);
+            double ratio = old_time/new_time;
             ratio_sum += ratio;
             ratio_min = std::min(ratio_min, ratio);
             ratio_max = std::max(ratio_max, ratio);
@@ -372,7 +380,7 @@ void profile_v2_mul(ulong max_len, bool use_flint)
         std::cout << " | "
                   << format_fixed(ratio_min, 1, 2)
                   << " "
-                  << format_fixed(ratio_sum/nreps, 1, 2)
+                  << format_fixed(ratio_sum/breps, 1, 2)
                   << " "
                   << format_fixed(ratio_max, 1, 2)
                   << std::endl;

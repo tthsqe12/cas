@@ -105,6 +105,14 @@ struct fftv2_ctx {
         return reduce_pm2n_to_pm1n(x, p);
     }
 
+
+    inline void fft_basecase2_1x(double* X, ulong j);
+    inline void fft_basecase2_2x(double* X, ulong j);
+    inline void fft_basecase2_4x(double* X, ulong j);
+    inline void ifft_basecase2_1x(double* X, ulong j);
+    inline void ifft_basecase2_2x(double* X, ulong j);
+    inline void ifft_basecase2_4x(double* X, ulong j);
+
     template <int> inline void fft_basecase(double *X, ulong j);
     template <int> inline void ifft_basecase(double *X, ulong j);
     void fft_base(ulong I, ulong j);
@@ -161,11 +169,15 @@ void fftv2_ctx::init_prime(ulong pp)
 
 void fftv2_ctx::fit_wtab(ulong k)
 {
+    if (wtab_depth >= k)
+        return;
+
+    w2s = reinterpret_cast<double*>(std::realloc(w2s, pow2(k)*sizeof(double)));
+
     while (wtab_depth < k)
     {
         wtab_depth++;
         ulong N = pow2(wtab_depth-1);
-        w2s = reinterpret_cast<double*>(std::realloc(w2s, N*sizeof(double)));
 
         slong ww = nmod_pow_ui(primitive_root, (mod.n - 1)>>wtab_depth, mod);
         packed<double, VEC_SZ> w = reduce_0n_to_pmhn(double(ww), p, 0.5*p);
@@ -175,7 +187,6 @@ void fftv2_ctx::fit_wtab(ulong k)
         packed<double, VEC_SZ> x0, x1;
         double* wptr = w2s;
         ulong j = 0;
-        assert(N/2 >= 2*VEC_SZ);
         do {
             x0.load(wptr + j);
             x1.load(wptr + j + VEC_SZ);
@@ -187,6 +198,7 @@ void fftv2_ctx::fit_wtab(ulong k)
             x1.store(wptr + N/2 + j + VEC_SZ);
             j += 2*VEC_SZ;
         } while (j < N/2);
+        assert(j == N/2);
     }
 }
 
@@ -328,7 +340,7 @@ void fftv2_ctx::fft_main(
             fft_main_block(I + a*S, S<<k2, k1, j);
 
         for (ulong b = 0; b < ulong(1)<<k1; b++)
-            fft_main(I + (b<<k2)*S, S, k2, (j<<k1) + b);
+            fft_main(I + b*(S<<k2), S, k2, (j<<k1) + b);
 
         return;
     }
@@ -367,7 +379,7 @@ void fftv2_ctx::ifft_main(
         ulong k2 = k - k1;
 
         for (ulong b = 0; b < ulong(1)<<k1; b++)
-            ifft_main(I + (b<<k2)*S, S, k2, (j<<k1) + b);
+            ifft_main(I + b*(S<<k2), S, k2, (j<<k1) + b);
 
         for (ulong a = 0; a < ulong(1)<<k2; a++)
             ifft_main_block(I + a*S, S<<k2, k1, j);
@@ -646,8 +658,8 @@ void fftv2_ctx::ifft_trunc_block(
         double* X1 = from_index(I + S*1);
         double* X2 = from_index(I + S*2);
         double* X3 = from_index(I + S*3);
-
-hits[z][2*n+f]++;
+        packed<double, VEC_SZ> N = p;
+        packed<double, VEC_SZ> Ninv = pinv;
 
         /*
             common cases (z,n,f) =
@@ -657,20 +669,6 @@ hits[z][2*n+f]++;
                             (4,1,false|true)
                             (4,2,false|true)
                             (4,3,false|true)
-
-            k = 2, z = 4, n = 0, f = true
-            [1//4   1//4*w   1//4*w^2   1//4*w^3]
-
-            k = 2, z = 4, n = 1, f = false
-            [4   -w   -w^2   -w^3]
-
-            k = 2, z = 4, n = 1, f = true
-            [4        -w   -w^2        -w^3]
-            [1   -1//2*w      0   -1//2*w^3]
-
-            k = 2, z = 4, n = 2, f = false
-            [   2       2   -w^2      0]
-            [2//w   -2//w      0   -w^2]
 
             k = 2, z = 4, n = 2, f = true
             [            2                2        -w^2             0]
@@ -699,9 +697,6 @@ hits[z][2*n+f]++;
 
             {x0, x1} = {2*(x0 + x1), 2*w^-1*(x0 - x1), (x0+x1)/2 + (x0-x1)*i/2}
         */
-
-            packed<double, VEC_SZ> N = p;
-            packed<double, VEC_SZ> Ninv = pinv;
             ulong mask = saturate_bits(j);
             double W = ((j) == 0) ? -w2s[0] : w2s[(2*(j)  )^(mask)];
             packed<double, VEC_SZ> c0 = 2.0;
@@ -756,8 +751,6 @@ hits[z][2*n+f]++;
                             2*w^-1*v0,
                              -w^-2*(2*x2 - r*v0 - u0)}
         */
-            packed<double, VEC_SZ> N = p;
-            packed<double, VEC_SZ> Ninv = pinv;
             ulong mask = saturate_bits(j);
             double W = ((j) == 0) ? -w2s[0] : w2s[(2*(j)  )^(mask)];
             double W2 = ((j) == 0) ? -w2s[0] : w2s[(  (j)  )^(mask>>1)];
@@ -820,9 +813,6 @@ hits[z][2*n+f]++;
                                  -w^-2*(-r*(x0 - x1) - (x0 + x1) + 2*x2),
                                         -r*(x0 - x1)             +   x2  }
         */
-
-            packed<double, VEC_SZ> N = p;
-            packed<double, VEC_SZ> Ninv = pinv;
             ulong mask = saturate_bits(j);
             double W = ((j) == 0) ? -w2s[0] : w2s[(2*(j)  )^(mask)];
             double W2 = ((j) == 0) ? -w2s[0] : w2s[(  (j)  )^(mask>>1)];
@@ -875,8 +865,143 @@ hits[z][2*n+f]++;
 
             return;
         }
+        else if (z == 4 && n == 1 && !f)
+        {
+        /*
+            k = 2, z = 4, n = 1, f = false
+            [4   -w   -w^2   -w^3]
 
+            {x0} = {4*x0 - w*x1 - w^2*(x2 + w*x3)}
+        */
+            packed<double, VEC_SZ> f0 = 4.0;
+            packed<double, VEC_SZ> w  = w2s[2*j];
+            packed<double, VEC_SZ> w2 = w2s[j];
 
+            for (ulong i = 0; i < blk_sz; i += VEC_SZ)
+            {
+                packed<double, VEC_SZ> a0, b0, c0, d0, a1, b1, c1, d1;
+                d0.load(X3 + i);
+                a0.load(X0 + i);
+                b0.load(X1 + i);
+                c0.load(X2 + i);
+                d0 = mulmod2(d0, w, N, Ninv);
+                a0 = mulmod2(a0, f0, N, Ninv);
+                c0 = add(c0, d0);
+                b0 = mulmod2(b0, w, N, Ninv);
+                a0 = sub(a0, b0);
+                c0 = mulmod2(c0, w2, N, Ninv);
+                a0 = sub(a0, c0);
+                a0.store(X0 + i);
+            }
+
+            return;
+        }
+        else if (z == 4 && n == 0 && f)
+        {
+        /*
+            k = 2, z = 4, n = 0, f = true
+            [1//4   1//4*w   1//4*w^2   1//4*w^3]
+
+            {x0} = {1/4*x0 + w/4*x1 + w^2/4*(x2 + w*x3)}
+        */
+            double ff0 = 0.25 - 0.25*p;
+            double ww = w2s[2*j];
+            double ww2 = w2s[j];
+            packed<double, VEC_SZ> f0 = ff0;
+            packed<double, VEC_SZ>  wo4 = reduce_pm1n_to_pmhn(mulmod2(ww, ff0, p, pinv), p);
+            packed<double, VEC_SZ> w2o4 = reduce_pm1n_to_pmhn(mulmod2(ww2, ff0, p, pinv), p);
+            packed<double, VEC_SZ> w = ww;
+
+            for (ulong i = 0; i < blk_sz; i += VEC_SZ)
+            {
+                packed<double, VEC_SZ> a0, b0, c0, d0, a1, b1, c1, d1;
+                d0.load(X3 + i);
+                a0.load(X0 + i);
+                b0.load(X1 + i);
+                c0.load(X2 + i);
+                d0 = mulmod2(d0, w, N, Ninv);
+                a0 = mulmod2(a0, f0, N, Ninv);
+                c0 = add(c0, d0);
+                b0 = mulmod2(b0, wo4, N, Ninv);
+                a0 = add(a0, b0);
+                c0 = mulmod2(c0, w2o4, N, Ninv);
+                a0 = add(a0, c0);
+                a0.store(X0 + i);
+            }
+
+            return;            
+        }
+        else if (z == 4 && n == 2 && !f)
+        {
+        /*
+            k = 2, z = 4, n = 2, f = false
+            [   2       2   -w^2      0]
+            [2//w   -2//w      0   -w^2]
+        */
+            ulong mask = saturate_bits(j);
+            double mwi = ((j) == 0) ? -w2s[0] : w2s[(2*(j)  )^(mask)];
+            packed<double, VEC_SZ> f0 = 2.0;
+            packed<double, VEC_SZ> w2 = w2s[j];
+            packed<double, VEC_SZ> twowi = reduce_pm1n_to_pmhn(-2.0*mwi, p);
+
+            for (ulong i = 0; i < blk_sz; i += VEC_SZ)
+            {
+                packed<double, VEC_SZ> a0, b0, c0, d0, u0, v0;
+                a0.load(X0 + i);
+                b0.load(X1 + i);
+                c0.load(X2 + i);
+                d0.load(X3 + i);
+                u0 = add(a0, b0);
+                v0 = sub(a0, b0);
+                u0 = mulmod2(u0, f0, N, Ninv);
+                v0 = mulmod2(v0, twowi, N, Ninv);
+                c0 = mulmod2(c0, w2, N, Ninv);
+                d0 = mulmod2(d0, w2, N, Ninv);
+                u0 = sub(u0, c0);
+                v0 = sub(v0, d0);
+                u0.store(X0 + i);
+                v0.store(X1 + i);
+            }
+
+            return;            
+        }
+        else if (z == 4 && n == 1 && f)
+        {
+        /*
+            k = 2, z = 4, n = 1, f = true
+            [4        -w   -w^2        -w^3]
+            [1   -1//2*w      0   -1//2*w^3]
+
+            2(2*x0 - w/2*(x1 + w^2*x3)) - w^2*x2
+                x0 - w/2*(x1 + w^2*x3)
+        */
+            packed<double, VEC_SZ> f2 = 2.0;
+            packed<double, VEC_SZ> w2 = w2s[j];
+            packed<double, VEC_SZ> wo2 = reduce_pm1n_to_pmhn(mulmod2(w2s[2*j], 0.5-0.5*p, p, pinv), p);
+            for (ulong i = 0; i < blk_sz; i += VEC_SZ)
+            {
+                packed<double, VEC_SZ> a0, b0, c0, d0, u0;
+                a0.load(X0 + i);
+                a0 = reduce_to_pm1n(a0, N, Ninv);
+                b0.load(X1 + i);
+                c0.load(X2 + i);
+                d0.load(X3 + i);
+                c0 = mulmod2(c0, w2, N, Ninv);
+                d0 = mulmod2(d0, w2, N, Ninv);
+                b0 = add(b0, d0);
+                b0 = mulmod2(b0, wo2, N, Ninv);
+                u0 = fmsub(f2, a0, b0);
+                b0 = sub(a0, b0);
+                a0 = reduce_to_pm1n(add(u0, u0), N, Ninv);
+                a0 = sub(a0, c0);
+                a0.store(X0 + i);
+                b0.store(X1 + i);
+            }
+
+            return;
+        }
+
+//hits[z][2*n+f]++;
 
     }
 

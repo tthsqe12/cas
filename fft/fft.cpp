@@ -59,9 +59,6 @@ void SleepMS(ulong ms) {
 #endif
 }
 
-
-
-
 ulong GetUS() {
 #ifndef _WIN32 // Linux - Unix
   struct timeval tm;
@@ -80,6 +77,8 @@ void SleepUS(ulong us) {
 #endif
 }
 
+
+
 int main(int argc, char *argv[])
 {
 #if 0
@@ -87,14 +86,15 @@ int main(int argc, char *argv[])
     profile_v2_trunc(17, 22);
     test_v2_mul(100000, 1000);
     profile_v2_mul(10000000, false);
-#elseif 0
+#endif
+#if 1
     test_v2_trunc(10, 14);
 
     for (int i = 0; i < 9; i++)
     for (int j = 0; j < 9; j++)
         hits[i][j] = 0;
 
-    profile_v2_trunc(16, 27);
+    profile_v2_trunc(16, 25);
 
     for (int i = 0; i < 9; i++)
     for (int j = 0; j < 9; j++)
@@ -107,7 +107,6 @@ int main(int argc, char *argv[])
     for (int j = 0; j < 9; j++)
         hits[i][j] = 0;
 
-
     profile_v2_mul(1000000, false);
 
     for (int i = 0; i < 9; i++)
@@ -115,14 +114,12 @@ int main(int argc, char *argv[])
         if (hits[i][j] != 0)
             std::cout << "[" << i << "][" << j << "] = " << hits[i][j] << std::endl;
 
-#else
+#endif
+#if 0
     profile_flint_trunc(12, 18);
-
 #endif
 
     ulong maxlen = 5700000;
-
-
 
 #if 0
 std::cout << std::endl;
