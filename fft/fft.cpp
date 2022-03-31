@@ -81,13 +81,14 @@ void SleepUS(ulong us) {
 
 int main(int argc, char *argv[])
 {
-#if 0
-    test_v2_trunc(10, 14);
-    profile_v2_trunc(17, 22);
-    test_v2_mul(100000, 1000);
-    profile_v2_mul(10000000, false);
-#endif
+// graph
 #if 1
+    test_v2_trunc(10, 14);
+    profile_v2_trunc(16, 27);
+#endif
+
+// candlestick
+#if 0
     test_v2_trunc(10, 14);
 
     for (int i = 0; i < 9; i++)
@@ -113,8 +114,17 @@ int main(int argc, char *argv[])
     for (int j = 0; j < 9; j++)
         if (hits[i][j] != 0)
             std::cout << "[" << i << "][" << j << "] = " << hits[i][j] << std::endl;
-
 #endif
+
+
+#if 0
+    test_v2_trunc(10, 14);
+    profile_v2_trunc(17, 22);
+    test_v2_mul(100000, 1000);
+    profile_v2_mul(10000000, false);
+#endif
+
+// flint graph
 #if 0
     profile_flint_trunc(12, 18);
 #endif

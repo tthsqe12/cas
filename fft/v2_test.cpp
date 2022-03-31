@@ -122,7 +122,7 @@ std::cout << "-- depth " << format_fixed(L, 2) << " -- | --  fft  -- | --  ifft 
 
         ulong nreps = 1;
         if (L < 24)
-            nreps <<= (25 - L)/2;
+            nreps <<= (24 - L);
 
         // do 1/2*2^L < otrunc <= 2^L
         ulong otrunc = pow2(L-1);
@@ -226,7 +226,6 @@ std::cout << "-- depth " << format_fixed(L, 2) << " -- | --  fft  -- | --  ifft 
         delete[] ctx.release_data();
     }
 
-#if 0
     std::cout << "fft_trunc: " << std::endl;
     display_dpoints(fft_trunc_times);
     std::cout << "ifft_trunc: " << std::endl;
@@ -235,7 +234,6 @@ std::cout << "-- depth " << format_fixed(L, 2) << " -- | --  fft  -- | --  ifft 
     display_dpoints(fft_times);
     std::cout << "ifft: " << std::endl;
     display_dpoints(ifft_times);
-#endif
 }
 
 
@@ -314,7 +312,6 @@ void profile_v2_mul(ulong max_len, bool use_flint)
 
     for (ulong i = 0; i < 2*max_len; i++)
         data[i] = -ulong(1);
-
 
 std::cout << "output size       more blanced mul                               less balanced mul               | min  avg  max" << std::endl;
 
@@ -448,8 +445,6 @@ std::cout << "-- depth " << format_fixed(L, 2) << " -- | --  fft  -- | --  ifft 
             for (i = 0; i < 2*n; i++)
                mpn_normmod_2expp1(ii[i], limbs);
 
-
-    
             timeit_start(timer);
             fft_truncate(ii, n, w, &t1, &t2, trunc);
             timeit_stop(timer);
@@ -487,7 +482,6 @@ std::cout << "-- depth " << format_fixed(L, 2) << " -- | --  fft  -- | --  ifft 
     }
 
     flint_randclear(state);
-
 
     std::cout << "fft_trunc: " << std::endl;
     display_dpoints(fft_trunc_times);

@@ -253,11 +253,11 @@ inverse butterfly:
     IW := i*w^-1
 */
 
-#define RADIX_4_REVERSE_PARAM(j) \
-    ulong mask = saturate_bits(j); \
-    double W  = ((j) == 0) ? -w2s[0] : w2s[(2*(j)  )^(mask)]; \
-    double W2 = ((j) == 0) ? -w2s[0] : w2s[(  (j)  )^(mask>>1)]; \
-    double IW = ((j) == 0) ?  w2s[1] : w2s[(2*(j)+1)^(mask)]; \
+#define RADIX_4_REVERSE_PARAM(j, j_can_be_zero) \
+    ulong jm = j ^ (saturate_bits(j)>>1); \
+    double W  = ((j_can_be_zero) && (j) == 0) ? -w2s[0] : w2s[2*jm+1]; \
+    double W2 = ((j_can_be_zero) && (j) == 0) ? -w2s[0] : w2s[jm]; \
+    double IW = ((j_can_be_zero) && (j) == 0) ?  w2s[1] : w2s[2*jm+0]; \
     double n = p; \
     double ninv = pinv;
 
@@ -287,11 +287,11 @@ inverse butterfly:
     *(X3) = _x3; \
 }
 
-#define PD_RADIX_4_REVERSE_PARAM(j) \
-    ulong mask = saturate_bits(j); \
-    packed<double, 4> W  = ((j) == 0) ? -w2s[0] : w2s[(2*(j)  )^(mask)]; \
-    packed<double, 4> W2 = ((j) == 0) ? -w2s[0] : w2s[(  (j)  )^(mask>>1)]; \
-    packed<double, 4> IW = ((j) == 0) ?  w2s[1] : w2s[(2*(j)+1)^(mask)]; \
+#define PD_RADIX_4_REVERSE_PARAM(j, j_can_be_zero) \
+    ulong jm = j ^ (saturate_bits(j)>>1); \
+    packed<double, 4> W  = ((j_can_be_zero) && (j) == 0) ? -w2s[0] : w2s[2*jm+1]; \
+    packed<double, 4> W2 = ((j_can_be_zero) && (j) == 0) ? -w2s[0] : w2s[jm]; \
+    packed<double, 4> IW = ((j_can_be_zero) && (j) == 0) ?  w2s[1] : w2s[2*jm]; \
     packed<double, 4> n(p); \
     packed<double, 4> ninv(pinv); \
 
@@ -369,14 +369,13 @@ inverse butterfly:
         _z3.store(Z3); \
 }
 
-
 template <>
 inline void fftv2_ctx::fft_basecase<0>(double* X, ulong j)
 {
 }
 
-template <>
-inline void fftv2_ctx::ifft_basecase<0>(double* X, ulong j)
+template <int depth, bool j_can_be_zero, typename std::enable_if<depth == 0>::type*>
+inline void fftv2_ctx::ifft_basecase(double* X, ulong j)
 {
 }
 
@@ -387,8 +386,8 @@ inline void fftv2_ctx::fft_basecase<1>(double* X, ulong j)
     RADIX_2_FORWARD(X+0, X+1);
 }
 
-template <>
-inline void fftv2_ctx::ifft_basecase<1>(double* X, ulong j)
+template <int depth, bool j_can_be_zero, typename std::enable_if<depth == 1>::type*>
+inline void fftv2_ctx::ifft_basecase(double* X, ulong j)
 {
     RADIX_2_REVERSE_PARAM(j)
     RADIX_2_REVERSE(X+0, X+1);
@@ -573,10 +572,10 @@ inline void fftv2_ctx::fft_basecase2_4x(double* X, ulong j)
 }
 
 
-template <>
-inline void fftv2_ctx::ifft_basecase<2>(double* X, ulong j)
+template <int depth, bool j_can_be_zero, typename std::enable_if<depth == 2>::type*>
+inline void fftv2_ctx::ifft_basecase(double* X, ulong j)
 {
-    RADIX_4_REVERSE_PARAM(j)
+    RADIX_4_REVERSE_PARAM(j, j_can_be_zero)
     RADIX_4_REVERSE(X+0, X+1, X+2, X+3);
 }
 
@@ -657,130 +656,8 @@ inverse butterfly:
     X[4+3] = s;
 */
 
-inline void fftv2_ctx::ifft_basecase2_4x(double* io, ulong j)
-{
-    ulong mask = saturate_bits(j);
-    ulong mask1 = saturate_bits(j+1);
-    ulong mask2 = saturate_bits(j+2);
-    ulong mask3 = saturate_bits(j+3);
-
-    double W_0  = ((j) == 0) ? -w2s[0] : w2s[(2*(j+0)  )^(mask)];
-    double W2_0 = ((j) == 0) ? -w2s[0] : w2s[(  (j+0)  )^(mask>>1)];
-    double IW_0 = ((j) == 0) ?  w2s[1] : w2s[(2*(j+0)+1)^(mask)];
-    double W_1  =                        w2s[(2*(j+1)  )^(mask1)];
-    double W2_1 =                        w2s[(  (j+1)  )^(mask1>>1)];
-    double IW_1 =                        w2s[(2*(j+1)+1)^(mask1)];
-    double W_2  =                        w2s[(2*(j+2)  )^(mask2)];
-    double W2_2 =                        w2s[(  (j+2)  )^(mask2>>1)];
-    double IW_2 =                        w2s[(2*(j+2)+1)^(mask2)];
-    double W_3  =                        w2s[(2*(j+3)  )^(mask3)];
-    double W2_3 =                        w2s[(  (j+3)  )^(mask3>>1)];
-    double IW_3 =                        w2s[(2*(j+3)+1)^(mask3)];
-    double n = p;
-    double ninv = pinv;
-    double a, b, c, d, e, f, g, h;
-    double x, q, r, s, t, u, v, w;
-    double A, B, C, D, E, F, G, H;
-    double X, Q, R, S, T, U, V, W;
-
-    packed<double,4> N = p;
-    packed<double,4> Ninv = pinv;
-
-    a = io[0];
-    b = io[1];
-    c = io[2];
-    d = io[3];
-    x = io[4+0];
-    q = io[4+1];
-    r = io[4+2];
-    s = io[4+3];
-        A = io[8+0];
-        B = io[8+1];
-        C = io[8+2];
-        D = io[8+3];
-        X = io[8+4+0];
-        Q = io[8+4+1];
-        R = io[8+4+2];
-        S = io[8+4+3];
-
-    packed<double,4> adxs = packed<double,4>(a, d, x, s);
-    packed<double,4> bcqr = packed<double,4>(b, c, q, r);
-        packed<double,4> ADXS = packed<double,4>(A, D, X, S);
-        packed<double,4> BCQR = packed<double,4>(B, C, Q, R);
-
-    packed<double,4> eftu = add(adxs, bcqr);
-        packed<double,4> EFTU = add(ADXS, BCQR);
-
-    packed<double,4> ghvw = sub(adxs, bcqr);
-        packed<double,4> GHVW = sub(ADXS, BCQR);
-
-    ghvw = mulmod2(ghvw, packed<double,4>(W_0, IW_0, W_1, IW_1), N, Ninv);
-        GHVW = mulmod2(GHVW, packed<double,4>(W_2, IW_2, W_3, IW_3), N, Ninv);
-
-    packed<double,4> fhuw = unpackhi(eftu, ghvw);
-    packed<double,4> egtv = unpacklo(eftu, ghvw);
-        packed<double,4> FHUW = unpackhi(EFTU, GHVW);
-        packed<double,4> EGTV = unpacklo(EFTU, GHVW);
-
-    adxs = add(fhuw, egtv);
-        ADXS = add(FHUW, EGTV);
-
-    packed<double,4> cbrq = sub(fhuw, egtv);
-        packed<double,4> CBRQ = sub(FHUW, EGTV);
-
-    packed<double,4> cdrs = blend<0,1,0,1>(cbrq, adxs);
-        packed<double,4> CDRS = blend<0,1,0,1>(CBRQ, ADXS);
-
-    cdrs = mulmod2(cdrs, packed<double,4>(W2_0, W2_0, W2_1, W2_1), N, Ninv);
-        CDRS = mulmod2(CDRS, packed<double,4>(W2_2, W2_2, W2_3, W2_3), N, Ninv);
-
-    a = adxs[0];
-    x = adxs[2];
-    b = cbrq[1];
-    q = cbrq[3];
-
-    c = cdrs[0];
-    d = cdrs[1];
-    r = cdrs[2];
-    s = cdrs[3];
-
-    a = reduce_to_pm1n(a, n, ninv);
-    x = reduce_to_pm1n(x, n, ninv);
-
-        A = ADXS[0];
-        X = ADXS[2];
-        B = CBRQ[1];
-        Q = CBRQ[3];
-
-        C = CDRS[0];
-        D = CDRS[1];
-        R = CDRS[2];
-        S = CDRS[3];
-
-        A = reduce_to_pm1n(A, n, ninv);
-        X = reduce_to_pm1n(X, n, ninv);
-
-    io[0] = a;
-    io[1] = b;
-    io[2] = c;
-    io[3] = d;
-    io[4+0] = x;
-    io[4+1] = q;
-    io[4+2] = r;
-    io[4+3] = s;
-
-        io[8+0] = A;
-        io[8+1] = B;
-        io[8+2] = C;
-        io[8+3] = D;
-        io[8+4+0] = X;
-        io[8+4+1] = Q;
-        io[8+4+2] = R;
-        io[8+4+3] = S;
-}
-
-template <>
-inline void fftv2_ctx::ifft_basecase<4>(double* X, ulong j)
+template <int depth, bool j_can_be_zero, typename std::enable_if<depth == 4>::type*>
+inline void fftv2_ctx::ifft_basecase(double* X, ulong j)
 {
 #if 0
     ifft_basecase<2>(X+4*0, 4*j+0);
@@ -790,9 +667,107 @@ inline void fftv2_ctx::ifft_basecase<4>(double* X, ulong j)
     PD_RADIX_4_REVERSE_PARAM(j)
     PD_RADIX_4_REVERSE(X+4*0, X+4*1, X+4*2, X+4*3);
 #else
-    ifft_basecase2_4x(X+4*0, 4*j+0);
-    PD_RADIX_4_REVERSE_PARAM(j)
-    PD_RADIX_4_REVERSE(X+4*0, X+4*1, X+4*2, X+4*3);
+    ulong mask = saturate_bits(j);
+    ulong jm = j^(mask>>1);
+
+//    double W_0  = ((j) == 0) ? -w2s[0] : w2s[8*jm+7];
+//    double IW_0 = ((j) == 0) ?  w2s[1] : w2s[8*jm+6];
+//    double W_1  = ((j) == 0) ?  w2s[3] : w2s[8*jm+5];
+//    double IW_1 = ((j) == 0) ?  w2s[2] : w2s[8*jm+4];
+    packed<double,4> Q0;
+    if (j_can_be_zero && j == 0)
+    {
+        Q0 = packed<double,4>(-w2s[0], w2s[1], w2s[3], w2s[2]);
+    }
+    else
+    {
+        Q0.load(w2s + 8*jm+4);
+        Q0 = permute<3,2,1,0>(Q0);
+    }
+
+//    double W_2  = ((j) == 0) ?  w2s[7] : w2s[8*jm+3];
+//    double IW_2 = ((j) == 0) ?  w2s[6] : w2s[8*jm+2];
+//    double W_3  = ((j) == 0) ?  w2s[5] : w2s[8*jm+1];
+//    double IW_3 = ((j) == 0) ?  w2s[4] : w2s[8*jm+0];
+    packed<double,4> Q1;
+    Q1.load(w2s + ((j_can_be_zero && j == 0) ? 4 : 8*jm+0));
+    Q1 = permute<3,2,1,0>(Q1);
+
+//    double W2_0 = ((j) == 0) ? -w2s[0] : w2s[4*jm+3];
+//    double W2_1 = ((j) == 0) ?  w2s[1] : w2s[4*jm+2];
+//    double W2_2 = ((j) == 0) ?  w2s[3] : w2s[4*jm+1];
+//    double W2_3 = ((j) == 0) ?  w2s[2] : w2s[4*jm+0];
+    packed<double,4> Q2;
+    if (j_can_be_zero && j == 0)
+    {
+        Q2 = permute<3,2,1,0>(Q0);
+    }
+    else
+    {
+        Q2.load(w2s + 4*jm+0);
+    }
+
+    packed<double,4> N = p;
+    packed<double,4> Ninv = pinv;
+    packed<double,4> adxs, bcqr, ADXS, BCQR, eftu, EFTU, ghvw, GHVW;
+    packed<double,4> fhuw, egtv, FHUW, EGTV, cbrq, CBRQ, cdrs, CDRS, aAxX;
+    packed<double,4> x0, x1, x2, x3, y0, y1, y2, y3;
+    adxs = packed<double,4>(X[0+0], X[0+3], X[0+4], X[0+7]);
+    bcqr = packed<double,4>(X[0+1], X[0+2], X[0+5], X[0+6]);
+    ADXS = packed<double,4>(X[8+0], X[8+3], X[8+4], X[8+7]);
+    BCQR = packed<double,4>(X[8+1], X[8+2], X[8+5], X[8+6]);
+    eftu = add(adxs, bcqr);
+    EFTU = add(ADXS, BCQR);
+    ghvw = sub(adxs, bcqr);
+    GHVW = sub(ADXS, BCQR);
+
+//    ghvw = mulmod2(ghvw, packed<double,4>(W_0, IW_0, W_1, IW_1), N, Ninv);
+    ghvw = mulmod2(ghvw, Q0, N, Ninv);
+
+//    GHVW = mulmod2(GHVW, packed<double,4>(W_2, IW_2, W_3, IW_3), N, Ninv);
+    GHVW = mulmod2(GHVW, Q1, N, Ninv);
+
+    fhuw = unpackhi(eftu, ghvw);
+    egtv = unpacklo(eftu, ghvw);
+    FHUW = unpackhi(EFTU, GHVW);
+    EGTV = unpacklo(EFTU, GHVW);
+    adxs = add(fhuw, egtv);
+    ADXS = add(FHUW, EGTV);
+    cbrq = sub(fhuw, egtv);
+    CBRQ = sub(FHUW, EGTV);
+    cdrs = blend<0,1,0,1>(cbrq, adxs);
+    CDRS = blend<0,1,0,1>(CBRQ, ADXS);
+//    cdrs = mulmod2(cdrs, packed<double,4>(W2_0, W2_0, W2_1, W2_1), N, Ninv);
+//    CDRS = mulmod2(CDRS, packed<double,4>(W2_2, W2_2, W2_3, W2_3), N, Ninv);
+    cdrs = mulmod2(cdrs, permute<3,3,2,2>(Q2), N, Ninv);
+    CDRS = mulmod2(CDRS, permute<1,1,0,0>(Q2), N, Ninv);
+
+    aAxX = packed<double,4>(unpacklo(adxs, ADXS));
+    aAxX = reduce_to_pm1n(aAxX, N, Ninv);
+    x0 = packed<double,4>(aAxX[0], cbrq[1], cdrs[0], cdrs[1]);
+    x1 = packed<double,4>(aAxX[2], cbrq[3], cdrs[2], cdrs[3]);
+    x2 = packed<double,4>(aAxX[1], CBRQ[1], CDRS[0], CDRS[1]);
+    x3 = packed<double,4>(aAxX[3], CBRQ[3], CDRS[2], CDRS[3]);
+    packed<double,4> W  = (j_can_be_zero && j == 0) ? -w2s[0] : w2s[2*jm+1];
+    packed<double,4> IW = (j_can_be_zero && j == 0) ?  w2s[1] : w2s[2*jm+0];
+    packed<double,4> W2 = (j_can_be_zero && j == 0) ? -w2s[0] : w2s[jm];
+    y0 = add(x0, x1);
+    y1 = add(x2, x3);
+    y2 = sub(x0, x1);
+    y3 = sub(x3, x2);
+    y2 = mulmod2(y2, W, N, Ninv);
+    y3 = mulmod2(y3, IW, N, Ninv);
+    x0 = add(y0, y1);
+    x1 = sub(y3, y2);
+    x2 = sub(y1, y0);
+    x3 = add(y3, y2);
+    x0 = reduce_to_pm1n(x0, N, Ninv);
+    x2 = mulmod2(x2, W2, N, Ninv);
+    x3 = mulmod2(x3, W2, N, Ninv);
+    x0.store(X+0);
+    x1.store(X+4);
+    x2.store(X+8);
+    x3.store(X+12);
 #endif
 }
 
@@ -808,14 +783,14 @@ inline void fftv2_ctx::fft_basecase<6>(double* X, ulong j)
     fft_basecase<4>(X+16*3, 4*j+3);
 }
 
-template <>
-inline void fftv2_ctx::ifft_basecase<6>(double* X, ulong j)
+template <int depth, bool j_can_be_zero, typename std::enable_if<depth == 6>::type*>
+inline void fftv2_ctx::ifft_basecase(double* X, ulong j)
 {
-    ifft_basecase<4>(X+16*0, 4*j+0);
-    ifft_basecase<4>(X+16*1, 4*j+1);
-    ifft_basecase<4>(X+16*2, 4*j+2);
-    ifft_basecase<4>(X+16*3, 4*j+3);
-    PD_RADIX_4_REVERSE_PARAM(j)
+    ifft_basecase<4, j_can_be_zero>(X+16*0, 4*j+0);
+    ifft_basecase<4, false>(X+16*1, 4*j+1);
+    ifft_basecase<4, false>(X+16*2, 4*j+2);
+    ifft_basecase<4, false>(X+16*3, 4*j+3);
+    PD_RADIX_4_REVERSE_PARAM(j, j_can_be_zero)
     for (ulong i = 0; i < 16; i += 8)
         PD_RADIX_4_REVERSE_2X(X+i+16*0, X+i+16*1, X+i+16*2, X+i+16*3, X+i+16*0+4, X+i+16*1+4, X+i+16*2+4, X+i+16*3+4);
 }
@@ -832,14 +807,14 @@ void fftv2_ctx::fft_basecase<8>(double* X, ulong j)
     fft_basecase<6>(X+64*3, 4*j+3);
 }
 
-template <>
-void fftv2_ctx::ifft_basecase<8>(double* X, ulong j)
+template <int depth, bool j_can_be_zero, typename std::enable_if<depth == 8>::type*>
+void fftv2_ctx::ifft_basecase(double* X, ulong j)
 {
-    ifft_basecase<6>(X+64*0, 4*j+0);
-    ifft_basecase<6>(X+64*1, 4*j+1);
-    ifft_basecase<6>(X+64*2, 4*j+2);
-    ifft_basecase<6>(X+64*3, 4*j+3);
-    PD_RADIX_4_REVERSE_PARAM(j)
+    ifft_basecase<6, j_can_be_zero>(X+64*0, 4*j+0);
+    ifft_basecase<6, false>(X+64*1, 4*j+1);
+    ifft_basecase<6, false>(X+64*2, 4*j+2);
+    ifft_basecase<6, false>(X+64*3, 4*j+3);
+    PD_RADIX_4_REVERSE_PARAM(j, j_can_be_zero)
     for (ulong i = 0; i < 64; i += 8)
         PD_RADIX_4_REVERSE_2X(X+i+64*0, X+i+64*1, X+i+64*2, X+i+64*3, X+i+64*0+4, X+i+64*1+4, X+i+64*2+4, X+i+64*3+4);
 }

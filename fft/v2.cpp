@@ -3,6 +3,34 @@
 #define BLK_SHIFT 10
 #define VEC_SZ 4
 
+template<int n> struct is0 {};
+template<> struct is0<0> {typedef bool type;};
+
+template<int n> struct is1 {};
+template<> struct is1<1> {typedef bool type;};
+
+template<int n> struct is2 {};
+template<> struct is2<2> {typedef bool type;};
+
+template<int n> struct is3 {};
+template<> struct is3<3> {typedef bool type;};
+
+template<int n> struct is4 {};
+template<> struct is4<4> {typedef bool type;};
+
+template<int n> struct is5 {};
+template<> struct is5<5> {typedef bool type;};
+
+template<int n> struct is6 {};
+template<> struct is6<6> {typedef bool type;};
+
+template<int n> struct is7 {};
+template<> struct is7<7> {typedef bool type;};
+
+template<int n> struct is8 {};
+template<> struct is8<8> {typedef bool type;};
+
+
 struct fftv2_ctx {
     double * data;
     double p;
@@ -113,8 +141,13 @@ struct fftv2_ctx {
     inline void ifft_basecase2_2x(double* X, ulong j);
     inline void ifft_basecase2_4x(double* X, ulong j);
 
-    template <int> inline void fft_basecase(double *X, ulong j);
-    template <int> inline void ifft_basecase(double *X, ulong j);
+    template <int> inline void fft_basecase(double* X, ulong j);
+    template <int depth, bool, typename std::enable_if<depth == 0>::type* = nullptr> inline void ifft_basecase(double* X, ulong j);
+    template <int depth, bool, typename std::enable_if<depth == 1>::type* = nullptr> inline void ifft_basecase(double* X, ulong j);
+    template <int depth, bool, typename std::enable_if<depth == 2>::type* = nullptr> inline void ifft_basecase(double* X, ulong j);
+    template <int depth, bool, typename std::enable_if<depth == 4>::type* = nullptr> inline void ifft_basecase(double* X, ulong j);
+    template <int depth, bool, typename std::enable_if<depth == 6>::type* = nullptr> inline void ifft_basecase(double* X, ulong j);
+    template <int depth, bool, typename std::enable_if<depth == 8>::type* = nullptr> inline void ifft_basecase(double* X, ulong j);
     void fft_base(ulong I, ulong j);
     void ifft_base(ulong I, ulong j);
 
@@ -212,7 +245,7 @@ void fftv2_ctx::fft_base(ulong I, ulong j)
 
 void fftv2_ctx::ifft_base(ulong I, ulong j)
 {
-    ifft_basecase<LG_BLK_SZ>(from_index(I), j);
+    ifft_basecase<LG_BLK_SZ, true>(from_index(I), j);
 }
 
 
@@ -300,11 +333,11 @@ void fftv2_ctx::ifft_main_block(
         double* X2 = from_index(I + S*2);
         double* X3 = from_index(I + S*3);
 #if LG_BLK_SZ > 4
-        PD_RADIX_4_REVERSE_PARAM(j)
+        PD_RADIX_4_REVERSE_PARAM(j, true)
         for (ulong i = 0; i < blk_sz; i += 8)
             PD_RADIX_4_REVERSE_2X(X0+i, X1+i, X2+i, X3+i, X0+i+4, X1+i+4, X2+i+4, X3+i+4);
 #else
-        RADIX_4_REVERSE_PARAM(j)
+        RADIX_4_REVERSE_PARAM(j, true)
         for (ulong i = 0; i < blk_sz; i += 1)
             RADIX_4_REVERSE(X0+i, X1+i, X2+i, X3+i);
 #endif
