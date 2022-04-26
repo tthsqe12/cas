@@ -53,10 +53,10 @@
 %\newcommand{\ee}[0] {e}
 %\newcommand{\ii}[0] {i}
 
-\addtolength{\textwidth}{1.0in}
-\addtolength{\hoffset}{-0.6in}
-\addtolength{\textheight}{0.6in}
-\addtolength{\voffset}{-0.3in}
+\addtolength{\textwidth}{0.7in}
+\addtolength{\hoffset}{-0.4in}
+\addtolength{\textheight}{1.0in}
+\addtolength{\voffset}{-0.5in}
 
 \begin{document}
 \title{fft}
@@ -80,8 +80,26 @@ $\overline{i}^k$ & length $k$ bit-reversal of $i$. Only defined for $0 \le i < 2
 
 \section{fft/ifft}
 
-\subsection{Bit Reversal}
+\subsection{convolutions}
+For any two vectors $\vec{x}$ and $\vec{y}$ of length $n$, the
+\emph{cyclic convolution} $\vec{x}*\vec{y}$ is the length $n$ vector form by the
+product of the corresonding polynomials modulo $\phi^n-1$:
+\begin{equation*}
+\operatorname{EvalPoly}(\phi, \vec{x}*\vec{y}) = \operatorname{EvalPoly}(\phi, \vec{x}) \cdot \operatorname{EvalPoly}(\phi, \vec{x}) \bmod \phi^n-1\text{.}
+\end{equation*}
+Since the coefficients $\vec{x}*\vec{y}$ appear linearly on the left hand side,
+they can be computed by an evaluation and interpolation scheme at the $n$ roots
+of $\phi^n-1$. A more general convolution can be defined by
+\begin{equation*}
+\operatorname{EvalPoly}(\phi, \vec{x}*^a\vec{y}) = \operatorname{EvalPoly}(\phi, \vec{x}) \cdot \operatorname{EvalPoly}(\phi, \vec{x}) \bmod \phi^n-a^n\text{.}
+\end{equation*}
+Replacing $\phi$ by $a\phi$ has the effect of turning this into an ordinary
+cyclic convolution after rescaling the input and ouput by powers of $a$. Hence,
+it can be computed the same way. When $a^n = -1$ this is called a
+\emph{negacyclic convolution}, and when $a^n = \pm \ii$ this is called a
+\emph{right angle convolution}.
 
+\subsection{bit reversals and vector lengths of the form $2^k$}
 Unless the output of the fft is specifically needed to be in the usual order
 \begin{equation*}
 \left\{\operatorname{EvalPoly}(\om{2^k}{i}, \vec{x})\right\}_{0 \le i < 2^k}
@@ -217,7 +235,7 @@ More precisely,
 \end{align*}
 
 
-\subsection{Considerations for the base ring $\mathbb{C}$}
+\subsection{considerations for the base ring $\mathbb{C}$}
 \label{section_CC}
 When arithmetic in the base ring necessarily includes roundoff error, it is
 important for the fft to be implemented as accurately as possible. Since both
@@ -247,11 +265,6 @@ $17$ & $1246592$\T\B\\
 $16$ & $1984000$\T\B
 \end{tabular} 
 \end{table}
-One further issue that arises in some possible implementations is a $n$-fold
-increase in the size of the twiddle tables when processing with $n$-wide
-vectors. Since the tables \eqref{fft_fma_tab} or \eqref{ifft_fma_tab} are used
-only for the calculations in lane number $0$, there must be $n-1$ ``twists'' of
-this data available for the other vector lanes.
 
 The case of real input and output data is important and can be
 optimized. Feeding in purely real data to the fft and getting back real data
@@ -269,13 +282,13 @@ length, and this is nothing but the linearity of the fft operation:
 \operatorname{EvalPoly}(\omega,\vec{a}) - \ii 
 \operatorname{EvalPoly}(\omega,\vec{b})
 \end{align*}
-This is fine for doubling the processing speed of an even number of data sets 
-of the same length, but if we would like to process one data set twice as fast,
-the following identity can be used.
+This is fine for doubling the processing speed of an even number of real data
+sets of the same length, but if we would like to process one real data set
+twice as fast, the following identity can be used.
 \begin{equation*}
 \operatorname{EvalPoly}(\omega, (x_0,\dots,x_{2n-1})) = \operatorname{EvalPoly}(\omega^2, (x_0, x_2,\dots,x_{2n-2})) + \omega \operatorname{EvalPoly}(\omega^2, (x_1, x_3,\dots,x_{2n-1}))\text{.}
 \end{equation*}
-Multiplication of real coefficients $\{a_i\}$ and $\{b_i\}$ to
+The cyclic convolution of real coefficients $\{a_i\}$ and $\{b_i\}$ to
 form product coefficients $\{c_i\}$ can then take the form
 \begin{equation*}
 \begin{array}{c}
@@ -339,6 +352,12 @@ f_{i} &= \hat{a}_i + \ii \hat{b}_i&\text{,}& \quad \hat{c}_{i+0} &= \hat{e}_i + 
 \text{.}
 \end{equation*}
 
+Since this strategy is not particularly well suited to the important case of 
+squaring a polynomial, we simply remark here that a right angle convolution
+should be used in this case as it requires no input padding and ouputs the lower
+half of the coefficient in the real part of the output and outputs the higher
+half of the coefficients in the imaginary parts of the output.
+
 \section{integer multiplication}
 \label{section_mul}
 
@@ -367,11 +386,11 @@ smaller operand ranges between $n/2$ and $n/4$ bits are shown with three dots.
 \input muldata.tex
 \def\maxy{26}
 \def\maxx{29}
-\begin{figure}[H]
+\begin{figure}
 \caption{$n$ bit integer product on desktop Bulldozer}
 \label{bull_mul}
 \centering
-\begin{tikzpicture}[xscale=1.0, yscale=0.33]
+\begin{tikzpicture}[xscale=0.75, yscale=0.25]
 \draw [dotted, gray] (12,0) grid (\maxx,\maxy);
 \draw[latex-latex, thin, draw=gray, -to] (12,0)--(\maxx,0) node [right] {$n$};
 \draw[latex-latex, thin, draw=gray, -to] (12,0)--(12,\maxy) node [above] {$\frac{\text{time} \cdot 10^{8}/\text{sec}}{n \log_2 n}$};
@@ -382,7 +401,7 @@ smaller operand ranges between $n/2$ and $n/4$ bits are shown with three dots.
 \foreach \p in \bullcpd {\node [red] at \p {$\circ$};}
 \foreach \p in \bullpd {\node [teal] at \p {$\circ$};}
 \foreach \p in \bullsd {\node [blue] at \p {$\circ$};}
-\node [black] at (21,-2) [below] {
+\node [black] at (21,-2.66) [below] {
 {\color{black} $\circ$ gmp}
 {\color{red} $\circ$ complex fft}
 {\color{teal}  $\circ$ four prime fft}
@@ -392,11 +411,11 @@ smaller operand ranges between $n/2$ and $n/4$ bits are shown with three dots.
 
 \def\maxy{15}
 \def\maxx{31}
-\begin{figure}[H]
-\caption{$n$ bit integer product on mobile Zen 2}
+\begin{figure}
+\caption{$n$ bit integer product on mobile Zen 2 (blue is wrong)}
 \label{zen_mul}
 \makebox[\textwidth][c]{
-\begin{tikzpicture}[xscale=1.0, yscale=0.5]
+\begin{tikzpicture}[xscale=0.75, yscale=0.375]
 \draw [dotted, gray] (12,0) grid (\maxx,\maxy);
 \draw[latex-latex, thin, draw=gray, -to] (12,0)--(\maxx,0) node [right] {$n$};
 \draw[latex-latex, thin, draw=gray, -to] (12,0)--(12,\maxy) node [above] 
@@ -407,7 +426,7 @@ smaller operand ranges between $n/2$ and $n/4$ bits are shown with three dots.
 \foreach \p in \zencpd {\node [red] at \p {$\circ$};}
 \foreach \p in \zenpd {\node [teal] at \p {$\circ$};}
 \foreach \p in \zensd {\node [blue] at \p {$\circ$};}
-\node [black] at (21,-1.5) [below] {
+\node [black] at (21,-2.0) [below] {
 {\color{black} $\circ$ gmp}
 {\color{red} $\circ$ complex fft}
 {\color{teal}  $\circ$ four prime fft}
@@ -418,11 +437,11 @@ smaller operand ranges between $n/2$ and $n/4$ bits are shown with three dots.
 
 \def\maxy{10}
 \def\maxx{31}
-\begin{figure}[H]
+\begin{figure}
 \caption{$n$ bit integer product on desktop Coffee Lake}
 \label{coffee_mul}
 \makebox[\textwidth][c]{
-\begin{tikzpicture}[xscale=1.0, yscale=0.75]
+\begin{tikzpicture}[xscale=0.75, yscale=0.56]
 \draw [dotted, gray] (12,0) grid (\maxx,\maxy);
 \draw[latex-latex, thin, draw=gray, -to] (12,0)--(\maxx,0) node [right] {$n$};
 \draw[latex-latex, thin, draw=gray, -to] (12,0)--(12,\maxy) node [above] 
@@ -433,7 +452,7 @@ smaller operand ranges between $n/2$ and $n/4$ bits are shown with three dots.
 \foreach \p in \coffeecpd {\node [red] at \p {$\circ$};}
 \foreach \p in \coffeepd {\node [teal] at \p {$\circ$};}
 \foreach \p in \coffeesd {\node [blue] at \p {$\circ$};}
-\node [black] at (21,-1) [below] {
+\node [black] at (21,-1.33) [below] {
 {\color{black} $\circ$ gmp}
 {\color{red} $\circ$ complex fft}
 {\color{teal}  $\circ$ four prime fft}
@@ -448,39 +467,53 @@ If the idea of zero padding the real input data to complex data in the previous
 section sounded bad, then the idea of zero padding the overall input data to the
 next power-of-two size should sound even worse. For this reason, a
 \emph{truncated fft} is necessary, which assumes certain portions of the input
-and output are zero. If the desired output length is denoted by $n$ we expect
-$\text{runtime} \approx n \log n$,
-so the more constant the ratio is, the better the truncation is working. In
-order to graph this ratio, we adopt fftw's notion of a flop: an fft or ifft of
-length $n$ is equivalent to $5 n \log_2(n)$ floating point operations.
-Figures \ref{figure_bull_trunc} and \ref{figure_zen_trunc} show a graph of such
-a ratio for the three algorithms in Section \ref{section_mul}
-with the input further truncated to length $n/2$. 
-The complex fft is, of course, not truncated but rather working with lengths of 
-the form $2^k$, $3\cdot2^k$, or $5\cdot2^k$. The timings for the four prime fft
-give the (amortized) average per-prime timing.
+and output are zero. If the desired output length is denoted by $n$ we expect a
+runtime proportional to $n \log n$, so the more constant this ratio is the 
+better the truncation is working. In order to graph this ratio, we adopt fftw's 
+notion of a flop: an fft or ifft of length $n$ is equivalent to $5 n \log_2(n)$
+floating point operations. Figures \ref{figure_bull_trunc},
+\ref{figure_zen_trunc} and \ref{figure_coffee_trunc} show a graph of such a 
+ratio for the three ffts in Section \ref{section_mul} with the input further
+truncated to length $n/2$.
+
+\begin{itemize}
+\item{The complex fft is not truncated but rather working
+with lengths of the form $2^k$, $3\cdot2^k$, or $5\cdot2^k$.}
+\item{The timings for the four prime fft give the average per-prime timing.}
+\item{The single prime fft should be slower than the amortized four prime time
+for smaller sizes because horizonal action within vector registers is required
+when processing a single prime.}
+\end{itemize}
+
+It seems that the speed of the fft over $\mathbb{C}$ is never more than a factor
+of two away from the speed over $\mathbb{F}_p$, with the latest processor
+showing the most impressive performance. What gives the complex fft its special
+speed in Section \ref{section_mul} is the fact that each data point has a real
+and imaginary part, so the fft is really processing twice as much data and this
+is used by the optimizations for real input and output.
+
 Figure \ref{trunc_flint} shows the corresponding graph for FLINT's
 Sch\"onhage--Strassen fft, where very large coefficients had to be used to
 ensure that the graph can continue to $n=2^{18}$ while keeping the coefficient
 size constant.
 
 \input truncdata.tex
-\begin{figure}[H]
+\begin{figure}
 \caption{Truncation effectiveness in gflops on desktop Bulldozer}
 \label{figure_bull_trunc}
 \makebox[\textwidth][c]{
-\begin{tikzpicture}[xscale=1.75, yscale=0.5]
+\begin{tikzpicture}[xscale=1.31, yscale=0.375]
 \draw [dotted, gray] (10,0) grid (20,14);
 \draw[latex-latex, thin, draw=gray, -to] (10,0)--(20,0) node [right] {$n$};
 \draw[latex-latex, thin, draw=gray, -to] (10,0)--(10,14);
 \foreach \p in {2,4,...,14}{\node [black] at (10,\p) [left] {$\p$};}
 \foreach \p in {10,11,...,20}{\node [black] at (\p,0) [below] {$2^{\p}$};}
-\node [blue] at (17,-2) [left] {single prime fft};
-\node [cyan]   at (17,-3) [left] {single prime ifft};
-\node [teal]   at (15,-2) [left] {four prime fft};
-\node [green]  at (15,-3) [left] {four prime ifft};
-\node [red]    at (13,-2) [left] {complex fft};
-\node [orange] at (13,-3) [left] {complex ifft};
+\node [blue]   at (17,-2) [right] {single prime fft};
+\node [cyan]   at (17,-3) [right] {single prime ifft};
+\node [teal]   at (14,-2) [right] {four prime fft};
+\node [green]  at (14,-3) [right] {four prime ifft};
+\node [red]    at (11,-2) [right] {complex fft};
+\node [orange] at (11,-3) [right] {complex ifft};
 \foreach \p in \bulltruncpdfft{\node [teal] at \p {$\circ$};}
 \foreach \p in \bulltruncpdifft{\node [green] at \p {$\circ$};}
 \foreach \p in \bulltruncsdfft{\node [blue] at \p {$\circ$};}
@@ -491,22 +524,22 @@ size constant.
 }
 \end{figure}
 
-\begin{figure}[H]
-\caption{Truncation effectiveness in gflops on mobile Zen 2}
+\begin{figure}
+\caption{Truncation effectiveness in gflops on mobile Zen 2 (single prime ifft is wrong)}
 \label{figure_zen_trunc}
 \makebox[\textwidth][c]{
-\begin{tikzpicture}[xscale=1.75, yscale=0.375]
+\begin{tikzpicture}[xscale=1.31, yscale=0.3]
 \draw [dotted, gray] (10,0) grid (20,20);
 \draw[latex-latex, thin, draw=gray, -to] (10,0)--(20,0) node [right] {$n$};
 \draw[latex-latex, thin, draw=gray, -to] (10,0)--(10,20);
 \foreach \p in {2,4,...,20}{\node [black] at (10,\p) [left] {$\p$};}
 \foreach \p in {10,11,...,20}{\node [black] at (\p,0) [below] {$2^{\p}$};}
-\node [blue]   at (17,-2) [left] {single prime fft};
-\node [cyan]   at (17,-3) [left] {single prime ifft};
-\node [teal]   at (15,-2) [left] {four prime fft};
-\node [green]  at (15,-3) [left] {four prime ifft};
-\node [red]    at (13,-2) [left] {complex fft};
-\node [orange] at (13,-3) [left] {complex ifft};
+\node [blue]   at (17,-3) [right] {single prime fft};
+\node [cyan]   at (17,-4.3) [right] {single prime ifft (buggy)};
+\node [teal]   at (14,-3) [right] {four prime fft};
+\node [green]  at (14,-4.3) [right] {four prime ifft};
+\node [red]    at (11,-3) [right] {complex fft};
+\node [orange] at (11,-4.3) [right] {complex ifft};
 \foreach \p in \zentruncpdfft{\node [teal] at \p {$\circ$};}
 \foreach \p in \zentruncpdifft{\node [green] at \p {$\circ$};}
 \foreach \p in \zentruncsdfft{\node [blue] at \p {$\circ$};}
@@ -517,9 +550,34 @@ size constant.
 }
 \end{figure}
 
+\begin{figure}
+\caption{Truncation effectiveness in gflops on desktop Coffee Lake}
+\label{figure_coffee_trunc}
+\makebox[\textwidth][c]{
+\begin{tikzpicture}[xscale=1.31, yscale=0.13]
+\draw [dotted, gray] (10,0) grid (20,36);
+\draw[latex-latex, thin, draw=gray, -to] (10,0)--(20,0) node [right] {$n$};
+\draw[latex-latex, thin, draw=gray, -to] (10,0)--(10,36);
+\foreach \p in {4,8,...,36}{\node [black] at (10,\p) [left] {$\p$};}
+\foreach \p in {10,11,...,20}{\node [black] at (\p,0) [below] {$2^{\p}$};}
+\node [blue]   at (17,-6) [right] {single prime fft};
+\node [cyan]   at (17,-9) [right] {single prime ifft};
+\node [teal]   at (14,-6) [right] {four prime fft};
+\node [green]  at (14,-9) [right] {four prime ifft};
+\node [red]    at (11,-6) [right] {complex fft};
+\node [orange] at (11,-9) [right] {complex ifft};
+\foreach \p in \coffeetruncpdfft{\node [teal] at \p {$\circ$};}
+\foreach \p in \coffeetruncpdifft{\node [green] at \p {$\circ$};}
+\foreach \p in \coffeetruncsdfft{\node [blue] at \p {$\circ$};}
+\foreach \p in \coffeetruncsdifft{\node [cyan] at \p {$\circ$};}
+\foreach \p in \coffeetrunccpdfft{\node [red] at \p {$\circ$};}
+\foreach \p in \coffeetrunccpdifft{\node [orange] at \p {$\circ$};}
+\end{tikzpicture}
+}
+\end{figure}
 
 
-\begin{figure}[H]
+\begin{figure}
 \caption{Truncation effectiveness of \texttt{\{i\}fft\_mfa\_truncate\_sqrt2} 
 with $2^{16}$ bit coefficients}
 \label{trunc_flint}
