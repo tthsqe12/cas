@@ -1,0 +1,55 @@
+# the main uses are:
+# make fft_profile && ./fft_profile
+# make fft_test && ./fft_test
+
+CXX = g++
+
+DIR := ${CURDIR}
+
+OPFLAGS = -O3 -DNDEBUG -fno-stack-protector -march=native
+#OPFLAGS = -O1 -march=native
+
+# various feature switches and c++ bug workarounds
+MYDEFS = -DNEW_ALIGNMENT_IS_BUGGY -DAVOID_AVX2 -DAVOID_MULX_ETC
+#MYDEFS = #-DNEW_ALIGNMENT_IS_BUGGY -DAVOID_AVX2 -DAVOID_MULX_ETC
+
+# fill in
+IFLAGS = -I/usr/local/include
+LFLAGS = -L/usr/local/lib
+
+#gcc
+CXXFLAGS = $(OPFLAGS) $(MYDEFS) $(IFLAGS) $(LFLAGS) $(MYDEFS) -std=c++17 -Wshadow -Wreturn-type -Wuninitialized -Wno-format -fmax-errors=2
+LDFLAGS =  -lpthread -lgmp -lmpfr -lflint -larb 
+
+.PHONY: clean build directories
+
+directories: build
+
+build:
+	mkdir -p build
+
+clean:
+	rm build/*.o || true
+
+build/misc.o: src/misc.cpp src/misc.h src/packed.h
+	mkdir -p build
+	$(CXX) $(CXXFLAGS) -c src/misc.cpp -o build/misc.o $(LDFLAGS)
+
+build/v1.o: src/v1.cpp src/v1_basecases.cpp src/v1_fft.cpp src/v1_mul.cpp src/v1.h src/packed.h
+	$(CXX) $(CXXFLAGS) -c src/v1.cpp -o build/v1.o $(LDFLAGS)
+
+build/v2.o: src/v2.cpp src/v2_basecases.cpp src/v2_fft.cpp src/v2_mul.cpp src/v2.h src/packed.h
+	$(CXX) $(CXXFLAGS) -c src/v2.cpp -o build/v2.o $(LDFLAGS)
+
+build/v3.o: src/v3.cpp src/v3_basecases.cpp src/v3_fft.cpp src/v3_mul.cpp src/v3.h src/packed.h
+	$(CXX) $(CXXFLAGS) -c src/v3.cpp -o build/v3.o $(LDFLAGS)
+
+fft_profile: src/fft_profile.cpp src/packed.h src/v1.h src/v2.h src/v3.h build/misc.o build/v1.o build/v2.o build/v3.o 
+	$(CXX) $(CXXFLAGS) src/fft_profile.cpp build/misc.o build/v1.o build/v2.o build/v3.o -o fft_profile $(LDFLAGS)
+
+fft_test: src/fft_test.cpp src/packed.h src/v1.h src/v2.h src/v3.h build/misc.o build/v1.o build/v2.o build/v3.o 
+	$(CXX) $(CXXFLAGS) src/fft_test.cpp build/misc.o build/v1.o build/v2.o build/v3.o -o fft_test $(LDFLAGS)
+
+disasm:
+	objdump -d -Mintel --no-show-raw-insn build/v1.o > build/v1.asm
+
