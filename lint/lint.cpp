@@ -1,42 +1,72 @@
-// g++ -Os --std=c++11 -fmax-errors=4 lint.cpp -g -o TEST && ./test
-
-#include <immintrin.h>
-
-#include "ulimb_extras.h"
+#include <typeinfo>
 #include "fmpz.h"
 #include "test_helpers.h"
 #include "timing.h"
-#include "my_mpn_internal.h"
 #include "nmod_poly.h"
 
-void test_nmod_poly(rand_state& state)
-{
-    nmod_ring R(fmpz(12));
-    nmod_poly a, b, c, d, e, q, r;
 
-    std::cout << "nmod_poly_sub_neg_mul..." << std::flush;
+template <typename RingType>
+void test_finite_field_poly(RingType& R, rand_state& state)
+{
+    typename RingType::poly_t a, b, c, d, e, q, r;
+    typename RingType::poly_product_t f;
+
+    std::cout << typeid(typename RingType::poly_t).name() << "_sub_neg_mul..." << std::flush;
 
     randtest(R, a, state, 8);
     randtest(R, b, state, 4);
     sub(R, c, a, b);
     sub(R, d, b, a);
-    add(R, c, c, d);
+    add(R, c, d);
     TEST1(is_zero(R, c), with(R, c));
+
+    std::cout << "PASS" << std::endl;
+
+    std::cout << typeid(typename RingType::poly_t).name() << "_poly_divrem..." << std::flush;
+
+    randtest(R, a, state, 8);
+    randtest(R, b, state, 4);
 
     try {
         divrem(R, q, r, a, b);
         mul(R, c, q, b);
-        add(R, c, c, r);
+        add(R, c, r);
         TEST4(equal(R, a, c), with(R, q), with(R, r), with(R, a), with(R, b));
     }
-    catch (const with<nmod_ring, fmpz>& ex)
+    catch (const with<RingType, typename RingType::elem_t>& oops)
     {
         std::cout << std::endl;
-        std::cout << "zero divisor: " << ex << std::endl;
-        std::cout << "     in ring: " << ex.parent() << std::endl;
+        std::cout << "zero divisor: " << oops << std::endl;
+        std::cout << "     in ring: " << oops.parent() << std::endl;
     }
 
-    std::cout << "PASS" << std::endl << std::flush;
+    std::cout << "PASS" << std::endl;
+
+    std::cout << "factoring: " << std::endl;
+
+    randtest(R, a, state, 5);
+    randtest(R, b, state, 4);
+    pow(R, c, a, 2);
+    pow(R, d, b, 3);
+    mul(R, q, c, d);
+    factor_squarefree(R, f, q);
+    std::cout << with(R, q) << " = " << with(R, f) << std::endl;
+
+    set(R, q, "(x+1)^4*(x+2)^5");
+    factor_squarefree(R, f, q);
+    std::cout << with(R, q) << " = " << with(R, f) << std::endl;
+
+    std::cout << "parsing: " << std::endl;
+
+    try {
+        set(R, q, "x+");
+        TEST(false && "unreachable");
+    }
+    catch (const char*& oops)
+    {
+        std::cout << oops << std::endl;
+    }
+    
 }
 
 void test_fmpz(rand_state& state)
@@ -118,7 +148,7 @@ void test_fmpz(rand_state& state)
         TEST2(equal(ZZ, d, e), d, e);
     }
 
-    std::cout << "PASS" << std::endl << std::flush;
+    std::cout << "PASS" << std::endl;
 
     std::cout << "fmpz_div..." << std::flush;
 
@@ -158,7 +188,7 @@ void test_fmpz(rand_state& state)
         TEST4(r.sign()*b.sign() <= 0, q, r, a, b);
     }
 
-    std::cout << "PASS" << std::endl << std::flush;
+    std::cout << "PASS" << std::endl;
 
     std::cout << "fmpz_gcd..." << std::flush;
 
@@ -186,7 +216,7 @@ void test_fmpz(rand_state& state)
                 randtest(ZZ, c, state, 20 + max_bits/20);
                 mul(ZZ, d, c, b);
                 add(ZZ, a, a, d);
-                swap(a, b);
+                swap(ZZ, a, b);
             }
         }
         gcd(ZZ, d, a, b);
@@ -223,7 +253,7 @@ void test_fmpz(rand_state& state)
         }
     }
 
-    std::cout << "PASS" << std::endl << std::flush;
+    std::cout << "PASS" << std::endl;
 
     std::cout << "fmpz_gcdx..." << std::flush;
 
@@ -251,7 +281,7 @@ void test_fmpz(rand_state& state)
                 randtest(ZZ, c, state, 20 + max_bits/20);
                 mul(ZZ, d, c, b);
                 add(ZZ, a, a, d);
-                swap(a, b);
+                swap(ZZ, a, b);
             }
         }
         gcdx(ZZ, d, s, t, a, b);
@@ -263,7 +293,7 @@ void test_fmpz(rand_state& state)
         TEST5(equal(ZZ, q, d), d, s, t, a, b);
     }
 
-    std::cout << "PASS" << std::endl << std::flush;
+    std::cout << "PASS" << std::endl;
 }
 
 
@@ -271,9 +301,10 @@ int main(int, char**)
 {
     rand_state state;
 
-    test_fmpz(state);
-    test_nmod_poly(state);
+    nmod_ring R(fmpz(3));
+    test_finite_field_poly(R, state);
 
+    test_fmpz(state);
 
 #if 0
     if (0) {

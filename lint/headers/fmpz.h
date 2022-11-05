@@ -6,6 +6,7 @@
 #include "rand_state.h"
 #include "nmod.h"
 #include "my_mpn.h"
+#include "generics.h"
 
 
 struct fmpn_struct {
@@ -115,7 +116,11 @@ inline bool _ui_is_small(ulimb x)
 bool _fmpz_is_canonical(slimb);
 slimb _fmpz_copy(slimb a);
 
+struct fmpzc;
+
 struct fmpz {
+    typedef fmpzc source_t;
+
     slimb data;
 
     int sign() {return my_cmp(data, slimb(0));}
@@ -257,33 +262,15 @@ struct fmpzc {
     }
 };
 
-struct fmpzx {
-    slimb data;
-    fmpzx(slimb d) : data(d) {}
-    fmpzx(fmpz& d) : data(d.steal_data()) {}
-
-    int sign() {return my_cmp(data, slimb(0));}
-    bool is_zero() {return data == 0;}
-    bool is_one() {return data == 1;}
-    bool is_positive() {return data > 0;}
-    bool is_negative() {return data < 0;}
-    bool is_small() {return _fmpz_is_small(data);}
-    slimb small() {return data;}
-    bool is_ptr() {return _fmpz_is_ptr(data);}
-    fmpn_struct * ptr() {return _fmpz_to_ptr(data);}
-    fmpn_struct * _ptr() {return _fmpz_to_ptr_no_check(data);}
-    ulimb* limbs() {return _fmpz_to_ptr(data)->limbs;}
-    slimb length() {return _fmpz_to_ptr(data)->length;}
-    slimb alloc() {return _fmpz_to_ptr(data)->alloc;}
-};
-
 int fmpz_cmp(fmpzc a, fmpzc b);
 
 inline bool fmpz_is_canonical(fmpzc a) {return _fmpz_is_canonical(a.data);}
-inline bool fmpz_is_canonical(fmpzx a) {return _fmpz_is_canonical(a.data);}
 inline bool fmpz_is_canonical(fmpz& a) {return _fmpz_is_canonical(a.data);}
 
-std::ostream& operator<<(std::ostream& o, fmpzc a);
+std::ostream& fmpz_write(std::ostream& o, fmpzc a);
+inline std::ostream& operator<<(std::ostream& o, fmpzc a) {return fmpz_write(o, a);}
+inline std::ostream& operator<<(std::ostream& o, const fmpz& a) {return fmpz_write(o, a);}
+
 
 struct fmpz_ring {
     typedef fmpz elem_t;
@@ -328,7 +315,6 @@ inline bool equal(fmpz_ring& ZZ, const fmpz& a, const fmpz& b) {return fmpz_equa
 void fmpz_mul_2exp(fmpz& x, fmpzc a, ulimb e);
 inline void mul_2exp(fmpz_ring& ZZ, fmpz& x, const fmpz& a, ulimb e) {fmpz_mul_2exp(x, a, e);}
 
-
 void fmpz_set(fmpz& x, fmpzc a);
 void fmpz_abs(fmpz& x);
 void fmpz_abs(fmpz& x, fmpzc a);
@@ -337,6 +323,7 @@ void fmpz_neg(fmpz& x, fmpzc a);
 void fmpz_add(fmpz& x, fmpzc a, fmpzc b);
 void fmpz_sub(fmpz& x, fmpzc a, fmpzc b);
 void fmpz_mul(fmpz& x, fmpzc a, fmpzc b);
+void fmpz_sqr(fmpz& x, fmpzc a);
 void fmpz_add_ui(fmpz& x, fmpzc a, ulimb b);
 void fmpz_sub_ui(fmpz& x, fmpzc a, ulimb b);
 void fmpz_mul_ui(fmpz& x, fmpzc a, ulimb b);
@@ -344,13 +331,6 @@ void fmpz_add_si(fmpz& x, fmpzc a, slimb b);
 void fmpz_sub_si(fmpz& x, fmpzc a, slimb b);
 void fmpz_mul_si(fmpz& x, fmpzc a, slimb b);
 
-inline void swap(fmpz& x, fmpz& y) {std::swap(x.data, y.data);}
-inline void set(fmpz_ring& ZZ, fmpz& x, const fmpz& a) {fmpz_set(x, a);}
-inline void neg(fmpz_ring& ZZ, fmpz& x, const fmpz& a) {fmpz_neg(x, a);}
-inline void neg(fmpz_ring& ZZ, fmpz& x) {fmpz_neg(x);}
-inline void add(fmpz_ring& ZZ, fmpz& x, const fmpz& a, const fmpz& b) {fmpz_add(x, a, b);}
-inline void sub(fmpz_ring& ZZ, fmpz& x, const fmpz& a, const fmpz& b) {fmpz_sub(x, a, b);}
-inline void mul(fmpz_ring& ZZ, fmpz& x, const fmpz& a, const fmpz& b) {fmpz_mul(x, a, b);}
 
 
 
@@ -362,17 +342,9 @@ void fmpz_divexact(fmpz& q, fmpzc a, fmpzc b);
 void fmpz_divexact_ui(fmpz& q, fmpzc a, ulimb b);
 void fmpz_divexact_si(fmpz& q, fmpzc a, slimb b);
 
-inline bool divisible(fmpz_ring& ZZ, const fmpz& a, const fmpz& b) {return fmpz_divisible(a, b);}
-inline void divexact(fmpz_ring& ZZ, fmpz& x, const fmpz& a, const fmpz& b) {fmpz_divexact(x, a, b);}
-
-
 void fmpz_tdiv_qr(fmpz& q, fmpz& r, fmpzc a, fmpzc b);
 void fmpz_fdiv_qr(fmpz& q, fmpz& r, fmpzc a, fmpzc b);
 void fmpz_cdiv_qr(fmpz& q, fmpz& r, fmpzc a, fmpzc b);
-inline void tdiv_qr(fmpz_ring& ZZ, fmpz& q, fmpz& r, const fmpz& a, const fmpz& b) {fmpz_tdiv_qr(q, r, a, b);}
-inline void fdiv_qr(fmpz_ring& ZZ, fmpz& q, fmpz& r, const fmpz& a, const fmpz& b) {fmpz_fdiv_qr(q, r, a, b);}
-inline void cdiv_qr(fmpz_ring& ZZ, fmpz& q, fmpz& r, const fmpz& a, const fmpz& b) {fmpz_cdiv_qr(q, r, a, b);}
-
 
 ulimb fmpz_fdiv_ui(fmpzc a, ulimb b);
 void fmpz_tdiv_q_ui(fmpz& q, fmpzc a, ulimb b);
@@ -390,17 +362,14 @@ void fmpz_randtest(fmpz& f, rand_state& state, flint_bitcnt_t bits);
 void fmpz_randtest_not_zero(fmpz& f, rand_state& state, flint_bitcnt_t bits);
 void fmpz_randtest_mod(fmpz& f, rand_state& state, fmpzc m);
 
-inline void randtest(fmpz_ring& ZZ, fmpz& x, rand_state& state, flint_bitcnt_t bits) {fmpz_randtest(x, state, bits);}
-inline void randtest_not_zero(fmpz_ring& ZZ, fmpz& x, rand_state& state, flint_bitcnt_t bits) {fmpz_randtest_not_zero(x, state, bits);}
-
-
 ulimb fmpz_bits(fmpzc a);
 
 double fmpz_get_d(fmpzc a);
 double fmpz_get_d_2exp(slimb* exp, fmpzc a);
 
+inline bool fmpz_abs_fits_ui(fmpzc x) {return x.small() || x.length() < 2;}
 
-
+ulimb fmpz_get_ui(fmpzc x);
 
 void fmpz_set_ui(fmpz& x, ulimb a);
 void fmpz_set_uiui(fmpz& x, ulimb a1, ulimb a0);
@@ -417,10 +386,30 @@ void fmpz_gcd(fmpz& g, fmpzc a, fmpzc b);
 void fmpz_gcd(fmpz& g, fmpzc a, fmpzc b, fmpzc c);
 void fmpz_gcdx(fmpz& g, fmpz& s, fmpz& t, fmpzc a, fmpzc b);
 
-inline void gcd(fmpz_ring& ZZ, fmpz& g, const fmpz& a, const fmpz& b) {fmpz_gcd(g, a, b);}
-inline void gcd(fmpz_ring& ZZ, fmpz& g, const fmpz& a, const fmpz& b, const fmpz& c) {fmpz_gcd(g, a, b, c);}
-inline void gcdx(fmpz_ring& ZZ, fmpz& g, fmpz& s, fmpz& t, const fmpz& a, const fmpz& b) {fmpz_gcdx(g, s, t, a, b);}
+inline void randtest(fmpz_ring& ZZ, fmpz& x, rand_state& state, flint_bitcnt_t bits) {fmpz_randtest(x, state, bits);}
+inline void randtest_not_zero(fmpz_ring& ZZ, fmpz& x, rand_state& state, flint_bitcnt_t bits) {fmpz_randtest_not_zero(x, state, bits);}
+inline void swap(fmpz_ring& ZZ, fmpz& x, fmpz& y) {std::swap(x.data, y.data);}
+inline void set(fmpz_ring& ZZ, fmpz& x, fmpzc a) {fmpz_set(x, a);}
+inline void neg(fmpz_ring& ZZ, fmpz& x, fmpzc a) {fmpz_neg(x, a);}
+inline void neg(fmpz_ring& ZZ, fmpz& x) {fmpz_neg(x);}
+inline void add(fmpz_ring& ZZ, fmpz& x, fmpzc a, fmpzc b) {fmpz_add(x, a, b);}
+inline void sub(fmpz_ring& ZZ, fmpz& x, fmpzc a, fmpzc b) {fmpz_sub(x, a, b);}
+inline void mul(fmpz_ring& ZZ, fmpz& x, fmpzc a, fmpzc b) {fmpz_mul(x, a, b);}
+inline void sqr(fmpz_ring& ZZ, fmpz& x, fmpzc a) {fmpz_sqr(x, a);}
+inline bool divisible(fmpz_ring& ZZ, fmpzc a, fmpzc b) {return fmpz_divisible(a, b);}
+inline void divexact(fmpz_ring& ZZ, fmpz& x, fmpzc a, fmpzc b) {fmpz_divexact(x, a, b);}
+inline void tdiv_qr(fmpz_ring& ZZ, fmpz& q, fmpz& r, fmpzc a, fmpzc b) {fmpz_tdiv_qr(q, r, a, b);}
+inline void fdiv_qr(fmpz_ring& ZZ, fmpz& q, fmpz& r, fmpzc a, fmpzc b) {fmpz_fdiv_qr(q, r, a, b);}
+inline void cdiv_qr(fmpz_ring& ZZ, fmpz& q, fmpz& r, fmpzc a, fmpzc b) {fmpz_cdiv_qr(q, r, a, b);}
+inline void gcd(fmpz_ring& ZZ, fmpz& g, fmpzc a, fmpzc b) {fmpz_gcd(g, a, b);}
+inline void gcd(fmpz_ring& ZZ, fmpz& g, fmpzc a, fmpzc b, fmpzc c) {fmpz_gcd(g, a, b, c);}
+inline void gcdx(fmpz_ring& ZZ, fmpz& g, fmpz& s, fmpz& t, fmpzc a, fmpzc b) {fmpz_gcdx(g, s, t, a, b);}
 
+inline fmpz operator -(fmpzc a) {fmpz x; fmpz_neg(x, a); return x;}
+inline fmpz operator -(fmpz&& x) {fmpz_neg(x, x); return x;}
+inline fmpz operator +(fmpzc a, fmpzc b) {fmpz x; fmpz_add(x, a, b); return x;}
+inline fmpz operator -(fmpzc a, fmpzc b) {fmpz x; fmpz_sub(x, a, b); return x;}
+inline fmpz operator *(fmpzc a, fmpzc b) {fmpz x; fmpz_mul(x, a, b); return x;}
 
 
 

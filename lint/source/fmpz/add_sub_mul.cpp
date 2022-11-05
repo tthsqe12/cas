@@ -1,15 +1,6 @@
 #include "mpn-impl.h"
 #include "fmpz.h"
 
-void fmpz_abs(fmpz& x, fmpzc a)
-{
-    FLINT_ASSERT(fmpz_is_canonical(a));
-    if (a.is_negative())
-        fmpz_neg(x, a);
-    else
-        fmpz_set(x, a);
-}
-
 void fmpz_neg(fmpz& x)
 {
     FLINT_ASSERT(fmpz_is_canonical(x));
@@ -17,14 +8,13 @@ void fmpz_neg(fmpz& x)
     if (x.is_small())
         x.data = -x.data;
     else
-        x.data ^= UWORD(3) << (FLINT_BITS - 2);
+        x.data ^= ulimb(3) << (FLINT_BITS - 2);
 
     FLINT_ASSERT(fmpz_is_canonical(x));
 }
 
 void fmpz_neg(fmpz& x, fmpzc a)
 {
-    FLINT_ASSERT(fmpz_is_canonical(x));
     FLINT_ASSERT(fmpz_is_canonical(a));
 
     if (a.is_small())
@@ -45,9 +35,32 @@ void fmpz_neg(fmpz& x, fmpzc a)
     }
 
     FLINT_ASSERT(fmpz_is_canonical(x));
-    FLINT_ASSERT(fmpz_is_canonical(a));
 }
 
+void fmpz_abs(fmpz& x)
+{
+    FLINT_ASSERT(fmpz_is_canonical(x));
+
+    if (x.is_negative())
+        fmpz_neg(x);
+
+    FLINT_ASSERT(fmpz_is_canonical(x));
+}
+
+void fmpz_abs(fmpz& x, fmpzc a)
+{
+    FLINT_ASSERT(fmpz_is_canonical(a));
+
+    if (a.is_negative())
+        fmpz_neg(x, a);
+    else
+        fmpz_set(x, a);
+
+    FLINT_ASSERT(fmpz_is_canonical(x));
+}
+
+
+/*** add, sub ****************************************************************/
 
 // x = (|A| + b)*s
 static void _add_ui(fmpz& x, fmpzc a, ulimb b, int s)
@@ -356,6 +369,59 @@ void fmpz_sub_ui(fmpz& x, fmpzc a, ulimb b)
     FLINT_ASSERT(fmpz_is_canonical(x));
 }
 
+/*** sqr *********************************************************************/
+
+// x = |A|^2*s
+static void _sqr_large(fmpz& x, fmpzc a, int s)
+{
+    fmpn_struct* X;
+    fmpn_struct* A = a.ptr();
+    slimb Alen = A->length;
+
+    if (Alen >= SQR_TOOM4_THRESHOLD)
+    {
+        fmpz_ulimb_realizer xx(x, 2*Alen, s);
+        glb_mpn_ctx.my_mpn_sqr(xx, A->limbs, Alen);
+        X = x.ptr();
+    }
+    else if (UNLIKELY(x.data == a.data))
+    {
+        tmp_allocator push;
+        ulimb* aa = push.recursive_alloc<ulimb>(Alen);
+        MPN_COPY(aa, A->limbs, Alen);
+        X = _fmpz_fit_destroy(x, 2*Alen, s);
+        my_mpn_sqr_toom_ordered(X->limbs, aa, Alen);
+    }
+    else
+    {
+        X = _fmpz_fit_destroy(x, 2*Alen, s);
+        my_mpn_sqr_toom_ordered(X->limbs, A->limbs, Alen);
+    }
+
+    X->length = 2*Alen - (X->limbs[2*Alen - 1] == 0);
+}
+
+void fmpz_sqr(fmpz& x, fmpzc a)
+{
+    FLINT_ASSERT(fmpz_is_canonical(a));
+
+    if (LIKELY(a.is_small()))
+    {
+        ulimb p1, p0;
+        ulimb aabs = my_abs(a.small());
+        SMUL_PPMM(p1, p0, aabs, aabs);
+        fmpz_set_uiui(x, p1, p0);
+    }
+    else
+    {
+        _sqr_large(x, a, 0);
+    }
+
+    FLINT_ASSERT(fmpz_is_canonical(x));
+}
+
+/*** mul *********************************************************************/
+
 // x = |A|*|B|*s
 static void _mul_ui(fmpz& x, fmpzc a, ulimb b, int s)
 {
@@ -454,7 +520,6 @@ static void _mul_large(fmpz& x, fmpzc a, fmpzc b, int s)
 
 void fmpz_mul(fmpz& x, fmpzc a, fmpzc b)
 {
-    FLINT_ASSERT(fmpz_is_canonical(x));
     FLINT_ASSERT(fmpz_is_canonical(a));
     FLINT_ASSERT(fmpz_is_canonical(b));
 
