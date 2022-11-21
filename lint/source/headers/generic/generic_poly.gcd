@@ -1,0 +1,213 @@
+//// the M.det should always be correct even if !wantM ////
+
+bool _fp_poly_hgcd_inplace_basecase(
+    fp_ring& ctx,
+    _fp_poly_mat22& M,
+    _fp_poly& A, _fp_poly& B,
+    _fp_poly& Q) // temp space
+{
+    FLINT_ASSERT(A.len > B.len);
+    _fp_poly_mat22_one(ctx, M);
+    bool swapped = false;
+    ulimb m = A.len/2;
+    while (B.len > m)
+    {
+        _fp_poly_divrem_inplace(ctx, Q, A, B);
+        std::swap(A, B);
+        _fp_poly_mat22_mul_elementary(ctx, M, Q);
+        swapped = !swapped;
+    }
+    return swapped;
+}
+
+bool _fp_poly_hgcd_basecase(
+    fp_ring& ctx,
+    _fp_poly_mat22& M,
+    _fp_poly& A, _fp_poly& B,
+    _fp_poly& a, _fp_poly& b,
+    _fp_poly& Q) // temp space
+{
+    _fp_poly_set(ctx, A, a);
+    _fp_poly_set(ctx, B, b);
+    return _fp_poly_hgcd_inplace_basecase(ctx, M, A, B, Q);
+}
+
+
+void _fp_poly_hgcd_inplace_recursive(
+    fp_ring& ctx,
+    _fp_poly_mat22& M, bool wantM,
+    _fp_poly& a, _fp_poly& b,
+    tmp_allocator& push)
+{
+    ulimb N = ctx.stride();
+    const slimb m = a.len/2;
+
+    if (b.len <= m)
+    {
+        _fp_poly_mat22_one(ctx, M);
+        return;
+    }
+
+    // read only
+    _fp_poly a0, b0, s, t, c0, d0;
+
+    // mutable
+    _fp_poly a2, b2, q, T0;
+    _fp_poly_mat22 R, S;
+
+    a2.coeffs = push.recursive_alloc<ulimb>((a.len+1), N);
+    b2.coeffs = push.recursive_alloc<ulimb>((a.len+1), N);
+     q.coeffs = push.recursive_alloc<ulimb>((a.len+1), N);
+    T0.coeffs = push.recursive_alloc<ulimb>((a.len+1), N);
+
+    R._11.coeffs = push.recursive_alloc<ulimb>((a.len+1) ,N);
+    R._12.coeffs = push.recursive_alloc<ulimb>((a.len+1) ,N);
+    R._21.coeffs = push.recursive_alloc<ulimb>((a.len+1) ,N);
+    R._22.coeffs = push.recursive_alloc<ulimb>((a.len+1) ,N);
+    S._11.coeffs = push.recursive_alloc<ulimb>((a.len+1) ,N);
+    S._12.coeffs = push.recursive_alloc<ulimb>((a.len+1) ,N);
+    S._21.coeffs = push.recursive_alloc<ulimb>((a.len+1) ,N);
+    S._22.coeffs = push.recursive_alloc<ulimb>((a.len+1) ,N);
+
+    _fp_poly_shift_right_readonly(ctx, a0, a, m);
+    _fp_poly_shift_right_readonly(ctx, b0, b, m);
+    _fp_poly_truncate_readonly(ctx, s, a, m);
+    _fp_poly_truncate_readonly(ctx, t, b, m);
+
+    if (a0.len < POLY_HGCD_CUTOFF)
+        _fp_poly_hgcd_inplace_basecase(ctx, R, a0, b0, q);
+    else
+        _fp_poly_hgcd_inplace_recursive(ctx, R, true, a0, b0, push);
+
+    _fp_poly_mat22_apply_inverse(ctx, a2, b2, R, s, t, T0);
+    _fp_poly_add_inplace_shift_left(ctx, a2, a0, m);
+    _fp_poly_add_inplace_shift_left(ctx, b2, b0, m);
+
+    if (b2.len <= m)
+    {
+        _fp_poly_set(ctx, a, a2);
+        _fp_poly_set(ctx, b, b2);
+        M.det = R.det;
+        if (wantM)
+            _fp_poly_mat22_set(ctx, M, R);
+        return;
+    }
+
+    slimb k = 2*m - b2.len + 1;
+
+    _fp_poly_divrem_inplace(ctx, q, a2, b2);
+
+    _fp_poly_shift_right_readonly(ctx, c0, b2, k);
+    _fp_poly_shift_right_readonly(ctx, d0, a2, k);
+    _fp_poly_truncate_readonly(ctx, s, b2, k);
+    _fp_poly_truncate_readonly(ctx, t, a2, k);
+
+    if (c0.len < POLY_HGCD_CUTOFF)
+        _fp_poly_hgcd_inplace_basecase(ctx, S, c0, d0, T0);
+    else 
+        _fp_poly_hgcd_inplace_recursive(ctx, S, true, c0, d0, push);
+
+    _fp_poly_mat22_apply_inverse(ctx, a, b, S, s, t, T0);
+    _fp_poly_add_inplace_shift_left(ctx, a, c0, k);
+    _fp_poly_add_inplace_shift_left(ctx, b, d0, k);
+
+    M.det = -R.det*S.det;
+    if (wantM)
+    {
+        _fp_poly_mat22_mul_elementary(ctx, R, q);
+        _fp_poly_mat22_mul(ctx, M, R, S, a2, b2);
+    }
+}
+
+
+void _fp_poly_hgcd_recursive(
+    fp_ring& ctx,
+    _fp_poly_mat22& M, bool wantM,
+    _fp_poly& A, _fp_poly& B,
+    _fp_poly a, _fp_poly b,
+    tmp_allocator& push)
+{
+    ulimb N = ctx.stride();
+    const slimb m = a.len/2;
+
+    if (b.len <= m)
+    {
+        _fp_poly_set(ctx, A, a);
+        _fp_poly_set(ctx, B, b);
+        _fp_poly_mat22_one(ctx, M);
+        return;
+    }
+
+    // read only
+    _fp_poly a0, b0, s, t;
+
+    // mutable
+    _fp_poly a2, b2, a3, b3, q, T0;
+    _fp_poly_mat22 R, S;
+
+    a2.coeffs = push.recursive_alloc<ulimb>((a.len+1), N);
+    b2.coeffs = push.recursive_alloc<ulimb>((a.len+1), N);
+    a3.coeffs = push.recursive_alloc<ulimb>((a.len+1), N);
+    b3.coeffs = push.recursive_alloc<ulimb>((a.len+1), N);
+     q.coeffs = push.recursive_alloc<ulimb>((a.len+1), N);
+    T0.coeffs = push.recursive_alloc<ulimb>((a.len+1), N);
+
+    R._11.coeffs = push.recursive_alloc<ulimb>((a.len+1) ,N);
+    R._12.coeffs = push.recursive_alloc<ulimb>((a.len+1) ,N);
+    R._21.coeffs = push.recursive_alloc<ulimb>((a.len+1) ,N);
+    R._22.coeffs = push.recursive_alloc<ulimb>((a.len+1) ,N);
+    S._11.coeffs = push.recursive_alloc<ulimb>((a.len+1) ,N);
+    S._12.coeffs = push.recursive_alloc<ulimb>((a.len+1) ,N);
+    S._21.coeffs = push.recursive_alloc<ulimb>((a.len+1) ,N);
+    S._22.coeffs = push.recursive_alloc<ulimb>((a.len+1) ,N);
+
+    _fp_poly_shift_right_readonly(ctx, a0, a, m);
+    _fp_poly_shift_right_readonly(ctx, b0, b, m);
+    _fp_poly_truncate_readonly(ctx, s, a, m);
+    _fp_poly_truncate_readonly(ctx, t, b, m);
+
+    if (a0.len < POLY_HGCD_CUTOFF)
+        _fp_poly_hgcd_basecase(ctx, R, a3, b3, a0, b0, q);
+    else
+        _fp_poly_hgcd_recursive(ctx, R, true, a3, b3, a0, b0, push);
+
+    _fp_poly_mat22_apply_inverse(ctx, a2, b2, R, s, t, T0);
+    _fp_poly_add_inplace_shift_left(ctx, a2, a3, m);
+    _fp_poly_add_inplace_shift_left(ctx, b2, b3, m);
+
+    if (b2.len <= m)
+    {
+        _fp_poly_set(ctx, A, a2);
+        _fp_poly_set(ctx, B, b2);
+        M.det = R.det;
+        if (wantM)
+            _fp_poly_mat22_set(ctx, M, R);
+        return;
+    }
+
+    slimb k = 2*m - b2.len + 1;
+
+    _fp_poly_divrem_inplace(ctx, q, a2, b2);
+
+    _fp_poly_shift_right_readonly(ctx, a0, b2, k);
+    _fp_poly_shift_right_readonly(ctx, b0, a2, k);
+    _fp_poly_truncate_readonly(ctx, s, b2, k);
+    _fp_poly_truncate_readonly(ctx, t, a2, k);
+
+    if (a0.len < POLY_HGCD_CUTOFF)
+        _fp_poly_hgcd_inplace_basecase(ctx, S, a0, b0, T0);
+    else 
+        _fp_poly_hgcd_inplace_recursive(ctx, S, true, a0, b0, push);
+
+    _fp_poly_mat22_apply_inverse(ctx, A, B, S, s, t, T0);
+    _fp_poly_add_inplace_shift_left(ctx, A, a0, k);
+    _fp_poly_add_inplace_shift_left(ctx, B, b0, k);
+
+    M.det = -R.det*S.det;
+    if (wantM)
+    {
+        _fp_poly_mat22_mul_elementary(ctx, R, q);
+        _fp_poly_mat22_mul(ctx, M, R, S, a2, b2);
+    }
+}
+
